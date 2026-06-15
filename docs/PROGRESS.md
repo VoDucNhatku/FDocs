@@ -137,10 +137,44 @@
 
 ---
 
+## Phase 2b — Backend Enhancement ✅ DONE
+
+**Worker**: Backend Worker (`/as-backend`)
+
+**Tasks:**
+- [x] `POST /api/documents/{doc_id}/qa/stream` — SSE streaming endpoint (FastAPI StreamingResponse)
+- [x] `answer_question_stream` async generator trong `gemini_service.py` (Gemini `stream=True`)
+- [x] `ask_stream_response` trong `qa_service.py` — embed → retrieve → stream → save to DB
+- [x] Data format: JSON-encoded tokens (`data: "text"\n\n`) + `data: [DONE]\n\n`
+- [x] `GET /api/library/similarity-map` — all-pairs cosine similarity giữa doc centroids
+- [x] `get_all_doc_centroids` trong `ChunkRepository` (SQL avg embedding + JOIN documents)
+- [x] `LibraryService` với pure-Python cosine similarity, threshold 0.65
+- [x] `library.py` route registered trong `main.py`
+- [x] Fix `frontend/src/services/qa.js` — thay `EventSource` bằng `fetch` + `ReadableStream`
+  - `EventSource` không hỗ trợ custom headers → không truyền được JWT + Gemini Key
+  - `fetch`-based SSE: gửi `Authorization` + `X-Gemini-Key` đúng cách
+- [x] `getAuthToken()` export từ `api.js` để `qa.js` lấy access token từ memory
+- [x] `docs/API.md` cập nhật với 2 endpoint mới
+- [x] Build verified: ✓ frontend build pass sau khi thay đổi
+
+**Output artifacts:**
+- `backend/app/services/gemini_service.py` — thêm `answer_question_stream`
+- `backend/app/services/qa_service.py` — thêm `ask_stream_response`
+- `backend/app/routes/qa.py` — thêm `POST /stream` route
+- `backend/app/repositories/chunk_repository.py` — thêm `get_all_doc_centroids`, bỏ unused import
+- `backend/app/services/library_service.py` — file mới
+- `backend/app/routes/library.py` — file mới
+- `backend/app/main.py` — register library router
+- `frontend/src/services/qa.js` — fix streamAsk sang fetch-based SSE
+- `frontend/src/services/api.js` — export `getAuthToken`
+- `docs/API.md` — documented 2 endpoints mới
+
+---
+
 ## Phase 4 — Testing ⏳ PENDING
 
 **Worker**: Tester (`/as-tester`)  
-**Chờ**: Phase 2 + 3 hoàn thành
+**Chờ**: Phase 2 + 3 hoàn thành ✅ (tất cả đã xong)
 
 ---
 

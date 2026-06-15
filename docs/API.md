@@ -146,7 +146,7 @@ Gợi ý top-3 tài liệu tương đồng nhất trong library dựa trên embe
 ## Q&A (Understand Mode)
 
 ### POST /api/documents/{doc_id}/qa
-Đặt câu hỏi, AI trả lời dựa trên RAG.  
+Đặt câu hỏi, AI trả lời dựa trên RAG (không streaming).  
 **Auth + X-Gemini-Key required**
 
 **Body**: `{ "question": "..." }`  
@@ -154,9 +154,48 @@ Gợi ý top-3 tài liệu tương đồng nhất trong library dựa trên embe
 
 ---
 
+### POST /api/documents/{doc_id}/qa/stream
+Đặt câu hỏi, AI trả lời dạng SSE stream (typewriter effect).  
+**Auth + X-Gemini-Key required**
+
+**Body**: `{ "question": "..." }`  
+**Response**: `text/event-stream`
+
+Mỗi chunk: `data: <JSON-encoded-string>\n\n`  
+Kết thúc: `data: [DONE]\n\n`
+
+Client phải dùng `fetch` (không phải `EventSource`) để gửi được custom headers.  
+Câu trả lời đầy đủ được lưu vào `qa_history` sau khi stream kết thúc.
+
+---
+
 ### GET /api/documents/{doc_id}/qa
 Lấy lịch sử Q&A của tài liệu.  
 **Auth required** | **Response 200**: `QAResponse[]`
+
+---
+
+## Library
+
+### GET /api/library/similarity-map
+Lấy đồ thị tương đồng giữa tất cả tài liệu trong library của user.  
+**Auth required**
+
+**Response 200**:
+```json
+{
+  "nodes": [
+    { "id": "uuid", "title": "...", "word_count": 12500, "file_type": "pdf" }
+  ],
+  "edges": [
+    { "source": "uuid", "target": "uuid", "similarity": 0.82 }
+  ]
+}
+```
+
+- Edges chỉ được trả về khi `similarity >= 0.65`
+- Documents chưa có chunks (chưa embed) sẽ không xuất hiện trong nodes
+- Dùng centroid embedding (avg của tất cả chunks) để tính cosine similarity theo cặp
 
 ---
 

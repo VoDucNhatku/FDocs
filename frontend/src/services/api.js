@@ -10,6 +10,10 @@ export function initApiInterceptors({ getToken, refresh }) {
   _refresh = refresh
 }
 
+export function getAuthToken() {
+  return _getToken?.() ?? null
+}
+
 api.interceptors.request.use((config) => {
   const token = _getToken?.()
   if (token) config.headers.Authorization = `Bearer ${token}`

@@ -167,3 +167,19 @@ async def answer_question(question: str, context_chunks: list[str], api_key: str
     )
     response = await model.generate_content_async(prompt)
     return response.text
+
+
+async def answer_question_stream(question: str, context_chunks: list[str], api_key: str):
+    """Async generator that yields text tokens as they arrive from Gemini."""
+    model = _make_client(api_key)
+    context = "\n\n---\n\n".join(context_chunks)
+    prompt = (
+        f"Answer the question based ONLY on the provided context. "
+        f"If the answer is not in the context, say so.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {question}"
+    )
+    response = await model.generate_content_async(prompt, stream=True)
+    async for chunk in response:
+        if chunk.text:
+            yield chunk.text

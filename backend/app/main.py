@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.middlewares.error_handler import unhandled_exception_handler
-from app.routes import auth, documents, analysis, qa
+from app.routes import auth, documents, analysis, qa, library
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,6 +25,7 @@ app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(analysis.router)
 app.include_router(qa.router)
+app.include_router(library.router)
 
 
 @app.get("/health")

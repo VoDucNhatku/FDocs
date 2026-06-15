@@ -22,6 +22,17 @@ async def ask(
     return await QAService(db).ask(doc_id, user_id, body.question, gemini_key)
 
 
+@router.post("/stream")
+async def ask_stream(
+    doc_id: uuid.UUID,
+    body: QARequest,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    gemini_key: str = Depends(get_gemini_key),
+    db: AsyncSession = Depends(get_db),
+):
+    return await QAService(db).ask_stream_response(doc_id, user_id, body.question, gemini_key)
+
+
 @router.get("", response_model=list[QAResponse])
 async def get_history(
     doc_id: uuid.UUID,

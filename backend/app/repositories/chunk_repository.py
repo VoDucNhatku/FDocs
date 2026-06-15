@@ -1,6 +1,5 @@
 import uuid
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +39,27 @@ class ChunkRepository:
         )
         row = result.fetchone()
         return list(row[0]) if row and row[0] is not None else None
+
+    async def get_all_doc_centroids(self, user_id: uuid.UUID) -> list[dict]:
+        """Return each document's centroid embedding (avg of all its chunks)."""
+        result = await self.db.execute(
+            text("""
+                SELECT d.id::text AS id, d.title, d.word_count, d.file_type,
+                       avg(c.embedding) AS centroid
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE d.user_id = :user_id
+                GROUP BY d.id, d.title, d.word_count, d.file_type
+            """),
+            {"user_id": str(user_id)},
+        )
+        rows = []
+        for row in result.fetchall():
+            d = dict(row._mapping)
+            if d["centroid"] is not None:
+                d["centroid"] = list(d["centroid"])
+            rows.append(d)
+        return rows
 
     async def get_similar_docs(
         self,

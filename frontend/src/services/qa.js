@@ -1,4 +1,4 @@
-import api from './api'
+import api, { getAuthToken } from './api'
 
 export const qaService = {
   ask: (docId, question) =>
@@ -8,23 +8,63 @@ export const qaService = {
     api.get(`/documents/${docId}/qa`).then((r) => r.data),
 
   streamAsk(docId, question, onToken, onDone) {
-    const token = localStorage.getItem('fdocs-access-token')
     const geminiKey = localStorage.getItem('fdocs-gemini-key')
-    const url = `/api/documents/${docId}/qa/stream?question=${encodeURIComponent(question)}`
-    const source = new EventSource(url)
+    let cancelled = false
 
-    source.onmessage = (e) => {
-      if (e.data === '[DONE]') {
-        source.close()
+    const run = async () => {
+      try {
+        const token = getAuthToken()
+        const headers = {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        }
+        if (token) headers['Authorization'] = `Bearer ${token}`
+        if (geminiKey) headers['X-Gemini-Key'] = geminiKey
+
+        const response = await fetch(`/api/documents/${docId}/qa/stream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ question }),
+        })
+
+        if (!response.ok || !response.body) {
+          onDone?.()
+          return
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (!cancelled) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') {
+              onDone?.()
+              return
+            }
+            try {
+              onToken(JSON.parse(data))
+            } catch {
+              onToken(data)
+            }
+          }
+        }
         onDone?.()
-      } else {
-        onToken(e.data)
+      } catch {
+        onDone?.()
       }
     }
-    source.onerror = () => {
-      source.close()
-      onDone?.()
-    }
-    return () => source.close()
+
+    run()
+    return () => { cancelled = true }
   },
 }
