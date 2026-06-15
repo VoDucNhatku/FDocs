@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, FileType, Trash2, Plus } from 'lucide-react'
+import { FileText, FileType, Trash2, Plus, LayoutGrid, Network } from 'lucide-react'
 import { documentService } from '@/services/documents'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
+import { LibrarySimilarityMap } from './LibrarySimilarityMap'
+import { cn } from '@/utils/cn'
 
 export function LibraryPage() {
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState('grid')
+  const [mapData, setMapData] = useState(null)
+  const [mapLoading, setMapLoading] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -18,26 +23,62 @@ export function LibraryPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const switchToMap = async () => {
+    setView('map')
+    if (mapData) return
+    setMapLoading(true)
+    try {
+      const data = await documentService.getSimilarityMap()
+      setMapData(data)
+    } finally {
+      setMapLoading(false)
+    }
+  }
+
   const handleDelete = async (id, e) => {
     e.stopPropagation()
     if (!confirm('Xóa tài liệu này?')) return
     await documentService.delete(id)
     setDocs((prev) => prev.filter((d) => d.id !== id))
+    setMapData(null)
   }
 
-  if (loading) return (
-    <div className="flex h-64 items-center justify-center">
-      <Spinner size="lg" />
-    </div>
-  )
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
 
   return (
-    <div className="p-6">
+    <div className="p-6 animate-page-in">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--text-primary)]">Library</h1>
-        <Button onClick={() => navigate('/upload')} size="sm">
-          <Plus size={16} /> Upload
-        </Button>
+
+        <div className="flex items-center gap-2">
+          {docs.length >= 2 && (
+            <div className="flex rounded-lg border border-[var(--border)] overflow-hidden">
+              <ViewToggleBtn
+                active={view === 'grid'}
+                onClick={() => setView('grid')}
+                title="Dạng lưới"
+              >
+                <LayoutGrid size={14} />
+              </ViewToggleBtn>
+              <ViewToggleBtn
+                active={view === 'map'}
+                onClick={switchToMap}
+                title="Bản đồ tương đồng"
+              >
+                <Network size={14} />
+              </ViewToggleBtn>
+            </div>
+          )}
+          <Button onClick={() => navigate('/upload')} size="sm">
+            <Plus size={16} /> Upload
+          </Button>
+        </div>
       </div>
 
       {docs.length === 0 ? (
@@ -45,7 +86,7 @@ export function LibraryPage() {
           <FileText size={40} className="mb-3 opacity-40" />
           <p className="text-sm">Chưa có tài liệu nào. Upload tài liệu đầu tiên.</p>
         </div>
-      ) : (
+      ) : view === 'grid' ? (
         <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {docs.map((doc) => (
             <Card
@@ -81,9 +122,34 @@ export function LibraryPage() {
             </Card>
           ))}
         </div>
+      ) : (
+        <div>
+          {mapLoading ? (
+            <div className="flex h-64 items-center justify-center">
+              <Spinner size="lg" />
+            </div>
+          ) : mapData ? (
+            <LibrarySimilarityMap nodes={mapData.nodes} edges={mapData.edges} />
+          ) : null}
+        </div>
       )}
-
-      {/* [DESIGN PENDING] Similarity Map view toggle */}
     </div>
+  )
+}
+
+function ViewToggleBtn({ active, onClick, title, children }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={cn(
+        'px-2.5 py-1.5 text-sm transition-colors',
+        active
+          ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
+          : 'text-[var(--text-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]',
+      )}
+    >
+      {children}
+    </button>
   )
 }

@@ -12,4 +12,7 @@ export const documentService = {
 
   delete: (id) =>
     api.delete(`/documents/${id}`),
+
+  getSimilarityMap: () =>
+    api.get('/library/similarity-map').then((r) => r.data),
 }

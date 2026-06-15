@@ -171,6 +171,35 @@
 
 ---
 
+## Phase 3d — Library Map View ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Tasks:**
+- [x] `documentService.getSimilarityMap()` — gọi `GET /api/library/similarity-map`
+- [x] `LibrarySimilarityMap.jsx` — Cytoscape component với full spec từ DESIGN_LOG:
+  - Node: circle 64px, opacity theo word_count (nhiều từ → đậm hơn)
+  - Edge: hiện khi similarity ≥ 0.65, thickness linear 1–4px theo similarity score
+  - COSE layout với spring animation (1200ms)
+  - Theme-aware colors (neutral / cream / dark)
+  - Hover node: ring highlight + floating tooltip (DOM ref, không re-render)
+  - Hover: connected edges highlight, others dimmed (opacity 0.1)
+  - Click node: navigate to document
+  - Empty state < 2 docs: message
+  - No edges state: overlay message
+- [x] `LibraryPage.jsx` — hybrid view toggle:
+  - Toggle `[⊞ Grid] [◉ Map]` chỉ hiện khi ≥ 2 docs
+  - Map data lazy-load khi user switch sang map view (1 lần, cache trong state)
+  - Delete doc → invalidate mapData (force refresh khi quay lại)
+- [x] Build verified: ✓ 2173 modules, 0 errors
+
+**Output artifacts:**
+- `frontend/src/features/library/LibrarySimilarityMap.jsx` — file mới
+- `frontend/src/features/library/LibraryPage.jsx` — cập nhật với view toggle
+- `frontend/src/services/documents.js` — thêm `getSimilarityMap`
+
+---
+
 ## Phase 4 — Testing ⏳ PENDING
 
 **Worker**: Tester (`/as-tester`)  
