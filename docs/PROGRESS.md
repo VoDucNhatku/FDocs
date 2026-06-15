@@ -56,10 +56,31 @@
 
 ---
 
-## Phase 3 — Frontend ⏳ PENDING
+## Phase 3 — Frontend ✅ DONE
 
-**Worker**: Frontend Worker (`/as-frontend`)  
-**Chờ**: Phase 2 hoàn thành (API contracts)
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Tasks:**
+- [x] Vite + React project init
+- [x] Tailwind CSS + CSS variable 3-theme system (neutral / cream / dark)
+- [x] ThemeProvider, AuthContext, GeminiKeyContext
+- [x] API service layer với JWT auto-attach + Gemini Key header + auto-refresh
+- [x] Auth pages: Login, Register, API Key Setup
+- [x] AppLayout (sidebar + command palette ⌘K) + AuthLayout
+- [x] Library page (grid view)
+- [x] Upload page (drag-drop, pdf.js + mammoth.js, progress bar)
+- [x] Document page: Read Mode (Summary, Keywords, Relevance, TimePlan, RelatedDocs)
+- [x] Document page: Understand Mode (KnowledgeGraph Cytoscape + spring animation, Q&A streaming)
+- [x] Command Palette ⌘K (cmdk)
+- [x] Build verified: ✓ 2172 modules, no errors
+
+**Output artifacts:**
+- `frontend/` — toàn bộ React source code
+- `docs/DESIGN_LOG.md` — design decisions + differentiation features log
+
+**[DESIGN PENDING] items:**
+- Library Similarity Map (#2) — đợi Designer Worker + backend endpoint mới
+- Reading Heatmap (#4) — đợi Designer Worker
 
 ---
 
