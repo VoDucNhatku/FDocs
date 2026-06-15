@@ -1,18 +1,30 @@
-# FDocs — Project Context
-
-## Language & Style
-- Respond in **Vietnamese**
-- Output: brief, direct, informative — no vague examples
-
-## Roles
-- AI Assistant / Brainstorm partner / Web Dev major / Explainer
+# FDocs — Project Memory
 
 ## Project
-- Type: TBD (user will clarify)
-- Stack: TBD
+- **Name**: FDocs — Web app hỗ trợ sinh viên đọc tài liệu học thuật (PDF/DOCX) bằng AI in-browser (WebLLM).
+- **Stack**: React + Vite (Frontend) | Backend TBD | LLM: WebLLM (in-browser inference)
+- **Docs**: Mọi tài liệu dự án nằm trong `docs/` (PRD.md, API.md, schema.md, PROGRESS.md)
 
-## Behavior
-- Prefer editing existing files over creating new ones
-- No unnecessary comments in code
-- No trailing summary after edits — user can read the diff
-- Give concrete examples only (no generic placeholders like "foo", "bar")
+## Rules (tự động áp dụng)
+@.claude/rules/general.md
+@.claude/rules/code-quality.md
+@.claude/rules/security.md
+@.claude/rules/workflow-execution.md
+
+## Custom Commands
+| Command | Mô tả |
+|---|---|
+| `/bug-fix` | Quy trình 3 phase: Reproduce → Fix → Verify |
+| `/feature-add` | Quy trình 4 phase: Scope → Impact → Implement → Test |
+| `/full-stack-build` | Quy trình 6 phase build từ ý tưởng đến deploy |
+| `/as-pm` | Kích hoạt vai trò Product Manager |
+| `/as-frontend` | Kích hoạt vai trò Frontend Worker |
+| `/as-backend` | Kích hoạt vai trò Backend Worker |
+| `/as-db` | Kích hoạt vai trò Database Worker |
+| `/as-tester` | Kích hoạt vai trò Tester Worker |
+| `/as-devops` | Kích hoạt vai trò DevOps Worker |
+
+## Commands
+- Dev: `npm run dev` (sau khi frontend được khởi tạo)
+- Lint: TBD
+- Test: TBD
