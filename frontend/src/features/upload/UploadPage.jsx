@@ -11,6 +11,9 @@ import { Card, CardContent } from '@/components/ui/Card'
 
 const STEPS = ['idle', 'parsing', 'uploading', 'done']
 const CHUNK_SIZE = 512
+// Mirrors backend MAX_EXTRACTED_TEXT_CHARS — reject oversized docs client-side before
+// a wasted parse→upload round-trip that the server would 422.
+const MAX_EXTRACTED_TEXT_CHARS = 1_000_000
 
 function estimateEmbedSeconds(text) {
   const n = Math.ceil(text.length / CHUNK_SIZE)
@@ -74,6 +77,15 @@ export function UploadPage() {
       const ext = file.name.split('.').pop().toLowerCase()
       setProgress('Đang đọc file...')
       const parsed = ext === 'pdf' ? await parsePdf(file) : await parseDocx(file)
+
+      if (parsed.extractedText.length > MAX_EXTRACTED_TEXT_CHARS) {
+        setStep('idle')
+        setError(
+          `Tài liệu quá lớn (${parsed.extractedText.length.toLocaleString('vi-VN')} ký tự). ` +
+          `Giới hạn ${MAX_EXTRACTED_TEXT_CHARS.toLocaleString('vi-VN')} ký tự — hãy tách nhỏ tài liệu.`,
+        )
+        return
+      }
 
       setStep('uploading')
       const secs = estimateEmbedSeconds(parsed.extractedText)
@@ -147,7 +159,7 @@ export function UploadPage() {
           />
         )}
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p className="text-sm text-[var(--error)]">{error}</p>}
 
         {step !== 'idle' && step !== 'done' && (
           <div className="rounded-lg bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-muted)]">
@@ -175,7 +187,7 @@ export function UploadPage() {
         )}
 
         {step === 'done' && (
-          <p className="text-sm text-green-600 font-medium">✓ Hoàn thành — đang chuyển hướng...</p>
+          <p className="text-sm text-[var(--success)] font-medium">✓ Hoàn thành — đang chuyển hướng...</p>
         )}
 
         <Button type="submit" disabled={!file || step !== 'idle'} loading={step !== 'idle' && step !== 'done'}>
