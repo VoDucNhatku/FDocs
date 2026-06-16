@@ -340,6 +340,29 @@ docker compose up -d
 - [x] Test: **104 passed** (+20 regression test: backoff, retry budget embed_query=2/embed_texts=3, summary call-count + segment cap, KG quota-not-swallowed, JSON validation, extract_text guard, is_quota_error cause-chain, SSE error-frame).
 - [x] `docs/API.md`: thêm 429/502 + format SSE error frame.
 
+---
+
+## Phase 8 — Frontend Error Handling (P1 sau backend P0) ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Input**: action item `[Frontend Worker]` từ `docs/RESEARCH_api_strategy.md` + thay đổi backend Phase 7 (`docs/API.md`).
+
+**Tasks:**
+- [x] `services/qa.js` — `streamAsk` thêm callback `onError`: bắt cả (a) response không OK ban đầu (429/502 từ embed_query/auth, đọc `detail` từ JSON body) và (b) **in-band SSE error frame** `{"error","detail"}` giữa stream → phân biệt với token (object có key `error` vs token là JSON string). `[DONE]`/error là terminal.
+- [x] `understand-mode/QAPanel.jsx` — nối `onError` → banner lỗi (`var(--error)`/`var(--error-bg)`); reload history khi xong (drop optimistic question nếu stream lỗi, đồng bộ với backend "không lưu answer dở"); clear lỗi khi hỏi mới.
+- [x] `understand-mode/KnowledgeGraphPanel.jsx` — `catch {}` trống → surface `err.response.data.detail` (KG giờ phân biệt 429/502).
+- [x] `upload/UploadPage.jsx` — cảnh báo client-side khi `extracted_text` > `MAX_EXTRACTED_TEXT_CHARS` (1M, mirror backend) trước khi upload; đồng bộ màu lỗi/success sang `var(--error)`/`var(--success)`.
+- [x] Các panel Summary/Keywords/Relevance/TimePlan: **không đổi** — đã hiển thị sẵn `err.response.data.detail` → tự nhận message 429/502 mới.
+- [x] Test: **frontend 24 passed** (qa.test.js 7→10: error frame, terminal-on-error, non-ok detail); `npm run build` ✓.
+
+**Output artifacts:**
+- `frontend/src/services/qa.js`, `frontend/src/services/qa.test.js`
+- `frontend/src/features/document/understand-mode/QAPanel.jsx`, `KnowledgeGraphPanel.jsx`
+- `frontend/src/features/upload/UploadPage.jsx`
+
+**Còn lại (P1 backend, chưa làm):** async job + SSE *progress* upload (`POST /api/documents` → `202 + job_id`) để né 504 cho doc dài — `TODO.md`. Hiện FE vẫn dùng estimate-timer cũ trong `UploadPage`.
+
 **Chưa làm (chuyển giai đoạn sau / worker khác):**
 - P1 `[Backend]`: async job + SSE progress upload (né 504 cho doc dài) — đã có item trong `TODO.md`.
 - P1 `[Frontend]`: xử lý error frame SSE + thông điệp 429/502 trên UI.
