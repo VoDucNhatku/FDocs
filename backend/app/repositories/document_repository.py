@@ -11,11 +11,17 @@ class DocumentRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, user_id: uuid.UUID, title: str, file_type: str, extracted_text: str, **kwargs: Any) -> Document:
+    async def create(
+        self, user_id: uuid.UUID, title: str, file_type: str, extracted_text: str, commit: bool = True, **kwargs: Any
+    ) -> Document:
         doc = Document(user_id=user_id, title=title, file_type=file_type, extracted_text=extracted_text, **kwargs)
         self.db.add(doc)
-        await self.db.commit()
-        await self.db.refresh(doc)
+        # flush populates id + server-default timestamps (via RETURNING) without ending
+        # the transaction, so the caller can add dependent rows and commit atomically.
+        await self.db.flush()
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(doc)
         return doc
 
     async def get_by_id(self, doc_id: uuid.UUID) -> Document | None:

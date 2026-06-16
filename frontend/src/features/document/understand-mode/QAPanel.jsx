@@ -8,6 +8,7 @@ export function QAPanel({ docId }) {
   const [question, setQuestion] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
+  const [error, setError] = useState('')
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function QAPanel({ docId }) {
     setQuestion('')
     setStreaming(true)
     setStreamText('')
+    setError('')
 
     const optimisticQ = { id: Date.now(), question: q, answer: null, sources: null }
     setHistory((h) => [...h, optimisticQ])
@@ -40,9 +42,14 @@ export function QAPanel({ docId }) {
       async () => {
         setStreaming(false)
         setStreamText('')
+        // Backend persists only a fully-streamed answer; reload to reflect the truth
+        // (drops the optimistic question if the stream errored before saving).
         const updated = await qaService.history(docId)
         setHistory(updated)
         cleanup?.()
+      },
+      (info) => {
+        setError(info?.detail || 'Đã xảy ra lỗi khi trả lời. Vui lòng thử lại.')
       },
     )
   }
@@ -71,6 +78,12 @@ export function QAPanel({ docId }) {
           <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
             {streamText}
             <span className="inline-block w-1 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
+          </div>
+        )}
+
+        {error && (
+          <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm border border-[var(--error)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
+            {error}
           </div>
         )}
 

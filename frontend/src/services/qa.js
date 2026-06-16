@@ -7,7 +7,11 @@ export const qaService = {
   history: (docId) =>
     api.get(`/documents/${docId}/qa`).then((r) => r.data),
 
-  streamAsk(docId, question, onToken, onDone) {
+  // onError(info) is called for both a non-OK initial response (e.g. 429/502 raised
+  // before streaming starts) and an in-band error frame emitted mid-stream
+  // (`data: {"error","detail"}`), since once HTTP 200 is committed the backend can
+  // only signal failure in-band. onDone always fires afterwards as the cleanup hook.
+  streamAsk(docId, question, onToken, onDone, onError) {
     const geminiKey = localStorage.getItem('fdocs-gemini-key')
     let cancelled = false
 
@@ -27,7 +31,17 @@ export const qaService = {
           body: JSON.stringify({ question }),
         })
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
+          let detail = `Lỗi ${response.status}`
+          try {
+            const body = await response.json()
+            if (body?.detail) detail = body.detail
+          } catch { /* non-JSON error body */ }
+          onError?.({ error: String(response.status), detail })
+          onDone?.()
+          return
+        }
+        if (!response.body) {
           onDone?.()
           return
         }
@@ -51,15 +65,25 @@ export const qaService = {
               onDone?.()
               return
             }
+            let parsed
             try {
-              onToken(JSON.parse(data))
+              parsed = JSON.parse(data)
             } catch {
               onToken(data)
+              continue
             }
+            // Error frames are JSON objects with an `error` key; tokens are JSON strings.
+            if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+              onError?.(parsed)
+              onDone?.()
+              return
+            }
+            onToken(parsed)
           }
         }
         onDone?.()
       } catch {
+        onError?.({ error: 'network', detail: 'Mất kết nối khi nhận câu trả lời.' })
         onDone?.()
       }
     }

@@ -10,7 +10,7 @@ class ChunkRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def bulk_create(self, document_id: uuid.UUID, chunks: list[dict]) -> None:
+    async def bulk_create(self, document_id: uuid.UUID, chunks: list[dict], commit: bool = True) -> None:
         objects = [
             Chunk(
                 document_id=document_id,
@@ -21,7 +21,10 @@ class ChunkRepository:
             for c in chunks
         ]
         self.db.add_all(objects)
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
 
     async def get_similar(self, query_embedding: list[float], document_id: uuid.UUID, top_k: int = 5) -> list[Chunk]:
         result = await self.db.execute(

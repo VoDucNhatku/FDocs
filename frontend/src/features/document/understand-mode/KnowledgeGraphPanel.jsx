@@ -99,8 +99,8 @@ export function KnowledgeGraphPanel({ docId, cached, onUpdate }) {
       const data = await analysisService.knowledgeGraph(docId)
       setKg(data.kg)
       onUpdate(data.kg)
-    } catch {
-      setError('Không thể tạo Knowledge Graph. Thử lại sau.')
+    } catch (err) {
+      setError(err.response?.data?.detail ?? 'Không thể tạo Knowledge Graph. Thử lại sau.')
     } finally {
       setLoading(false)
     }

@@ -4,8 +4,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.middlewares.error_handler import unhandled_exception_handler
-from app.routes import auth, documents, analysis, qa, library
+from google.api_core.exceptions import ResourceExhausted
+
+from app.middlewares.error_handler import (
+    gemini_quota_handler,
+    gemini_service_error_handler,
+    resource_exhausted_handler,
+    unhandled_exception_handler,
+)
+from app.routes import auth, documents, analysis, qa, library, upload
+from app.services.gemini_service import GeminiQuotaError, GeminiServiceError
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,6 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_exception_handler(GeminiQuotaError, gemini_quota_handler)
+app.add_exception_handler(GeminiServiceError, gemini_service_error_handler)
+app.add_exception_handler(ResourceExhausted, resource_exhausted_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(auth.router)
@@ -26,6 +37,7 @@ app.include_router(documents.router)
 app.include_router(analysis.router)
 app.include_router(qa.router)
 app.include_router(library.router)
+app.include_router(upload.router)
 
 
 @app.get("/health")

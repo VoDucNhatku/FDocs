@@ -1,6 +1,6 @@
 # FDocs — Progress Tracker
 
-> Cập nhật lần cuối: 2026-06-15
+> Cập nhật lần cuối: 2026-06-16
 
 ---
 
@@ -200,14 +200,215 @@
 
 ---
 
-## Phase 4 — Testing ⏳ PENDING
+## Phase 4 — Testing ✅ DONE
 
-**Worker**: Tester (`/as-tester`)  
-**Chờ**: Phase 2 + 3 hoàn thành ✅ (tất cả đã xong)
+**Worker**: Tester (`/as-tester`)
+
+**Tasks:**
+- [x] Dựng hạ tầng test backend: `pytest.ini`, `tests/conftest.py` (env + ASGI client + dependency overrides), `requirements-dev.txt`
+- [x] Unit tests backend (40): cosine similarity, JWT token, gemini parsing/chunking, schema/config validation
+- [x] Integration tests backend (27): auth API, qa + SSE stream, library map, documents CRUD — mock DB + Gemini, không cần Postgres/network
+- [x] Dựng hạ tầng test frontend: Vitest + jsdom + Testing Library, `vite.config.js` test block, `src/test/setup.js`, script `npm test`
+- [x] Frontend tests (17): `cn` util, `Button` component, `qaService.streamAsk` SSE parser (mock fetch, buffer qua chunk boundary, unicode decode)
+- [x] Build verified: backend `67 passed`, frontend `17 passed`, `npm run build` ✓
+
+**🐞 Bug phát hiện (đã báo cáo Backend Worker):**
+- **BUG #1 (HIGH)**: `requirements.txt` pin `passlib==1.7.4` nhưng không pin `bcrypt` → clean install lấy `bcrypt==5.0.0` không tương thích → **register/login crash `ValueError` runtime**. Fix: pin `bcrypt==4.0.1` (hoặc nâng passlib). Regression guard: `tests/test_auth_api.py`.
+- **NOTE (LOW)**: `get_gemini_key` dùng `Header(...)` required → thiếu hẳn header trả **422** (không phải 400 như `docs/API.md` ghi). Whitespace-only mới trả 400. Cần đồng bộ doc hoặc đổi sang `Header(None)` + check.
+
+**Output artifacts:**
+- `backend/tests/` — 8 test file + conftest + README
+- `backend/pytest.ini`, `backend/requirements-dev.txt`
+- `frontend/src/**/*.test.{js,jsx}` — 3 test file + `src/test/setup.js`
+- `.gitignore` — thêm Python entries (`.venv`, `__pycache__`, `.pytest_cache`)
+
+**Môi trường:** Python 3.14 mặc định thiếu `ensurepip` → venv dùng `python3.13`. Chi tiết: `backend/tests/README.md`.
 
 ---
 
-## Phase 5 — DevOps / Deploy ⏳ PENDING
+## Phase 4b — Backend Bug Fix ✅ DONE
 
-**Worker**: DevOps (`/as-devops`)  
-**Chờ**: Phase 4 pass
+**Worker**: Backend Worker (`/as-backend`)
+
+**Bugs đã fix:**
+- [x] **BUG #1 (HIGH)**: Pin `bcrypt==4.0.1` trong `requirements.txt` — tránh `bcrypt==5.0.0` incompatible với `passlib==1.7.4` gây crash register/login
+- [x] **asyncpg bump**: Nâng `asyncpg==0.29.0` → `0.30.0` — 0.29.0 không có wheel cho Python 3.13
+- [x] **NOTE (LOW)**: Đổi `get_gemini_key` từ `Header(...)` → `Header(None)` + manual check — thiếu header giờ trả 400 thay vì 422, đồng bộ với `docs/API.md`
+- [x] Regression: `67 passed` — không có test nào fail
+
+**Output artifacts:**
+- `backend/requirements.txt` — thêm `bcrypt==4.0.1`, bump `asyncpg==0.30.0`
+- `backend/app/middlewares/auth.py` — `get_gemini_key` consistent 400 cho mọi case thiếu/blank key
+
+---
+
+## Phase 5 — DevOps / Deploy ✅ DONE
+
+**Worker**: DevOps (`/as-devops`)
+
+**Tasks:**
+- [x] `backend/Dockerfile` — multi-stage Python 3.13-slim, HEALTHCHECK `/health`
+- [x] `frontend/Dockerfile` — multi-stage Node 20 build + nginx:alpine serve
+- [x] `frontend/nginx.conf` — SPA routing (`try_files`) + `/api/` reverse proxy tới backend + SSE-safe (`proxy_buffering off`)
+- [x] `backend/.dockerignore` + `frontend/.dockerignore` — loại trừ tests/venv/node_modules
+- [x] `docker-compose.yml` — full stack: PostgreSQL (pgvector/pgvector:pg16) + backend + frontend; DB healthcheck; migrations init script mount
+- [x] `.env.example` (root) — tất cả biến cần thiết, không có giá trị thật
+- [x] `.github/workflows/ci.yml` — test-backend (pytest) + test-frontend (vitest + build) trên mọi push/PR
+- [x] `.github/workflows/deploy.yml` — build & push images tới GHCR → SSH deploy `docker compose pull && up -d`
+
+**Output artifacts:**
+- `backend/Dockerfile`
+- `backend/.dockerignore`
+- `frontend/Dockerfile`
+- `frontend/nginx.conf`
+- `frontend/.dockerignore`
+- `docker-compose.yml`
+- `.env.example`
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy.yml`
+
+**GitHub Secrets cần cấu hình trên repo:**
+- `DEPLOY_HOST` — IP hoặc hostname server
+- `DEPLOY_USER` — SSH user trên server
+- `DEPLOY_SSH_KEY` — private key SSH (server cần public key tương ứng trong `authorized_keys`)
+- `GITHUB_TOKEN` — tự động có sẵn, dùng push GHCR
+
+**Hướng dẫn deploy lần đầu (trên server):**
+```bash
+git clone https://github.com/<user>/fdocs ~/fdocs
+cd ~/fdocs
+cp .env.example .env
+# Điền giá trị thật vào .env
+docker compose pull
+docker compose up -d
+```
+
+---
+
+## Phase 6 — Bug fixes & API Key management (DONE)
+
+**Bug fixes (backend):**
+- `.mjs` MIME type trong `frontend/nginx.conf` — fix pdf.js worker bị block (octet-stream → application/javascript)
+- Null byte (`\x00`) trong `extracted_text` — strip ở schema validator (PostgreSQL UTF-8 từ chối 0x00)
+- Embedding model `text-embedding-004` đã bị Google shut down (14/01/2026) → đổi sang `gemini-embedding-001` + `output_dimensionality=768` (khớp vector(768), tránh HNSW limit 2000)
+- Atomicity: embed chạy TRƯỚC mọi DB write; document + chunks persist trong 1 transaction → không còn document mồ côi khi embedding fail
+- Lỗi Gemini (429 quota / lỗi khác) dịch thành `GeminiQuotaError`/`GeminiServiceError` → HTTP 429/502 message rõ ràng, không lộ stack trace
+
+**API Key management (frontend):**
+- Sidebar: link `/settings/api-key` luôn truy cập được (trước chỉ hiện khi thiếu key), amber khi chưa có key
+- `ApiKeySetupPage`: đổi key + xoá key + hiển thị trạng thái key hiện tại (masked)
+- CommandPalette: thêm action "Cài đặt Gemini API Key"
+- Không cần backend: key thuần client-side (localStorage + header `X-Gemini-Key`, stateless)
+- **Quota view**: đã cân nhắc và BỎ — Google không expose quota còn lại qua API key thường, client không query được realtime
+
+---
+
+## Research — Gemini API Strategy & Risk Audit ✅ DONE
+
+**Worker**: Research Worker (`/as-researcher`)
+
+**Output artifact:**
+- `docs/RESEARCH_api_strategy.md` — audit đầy đủ (đã xác minh đối kháng từng tuyên bố định lượng)
+
+**Phát hiện gốc rễ chính (chưa fix — chờ Backend Worker):**
+- `chunk_size=512` là **512 KÝ TỰ** (không phải token) → doc ~8.000 từ sinh ~106–175 chunk
+- **`generate_summary` là gốc 429**: gọi `N+1` (~150) `generate_content_async` **tuần tự, không throttle/backoff** → vỡ generation RPM (~5–15) + nguy cơ 504 (~2–4 phút)
+- Ingestion (`embed_texts`) sống sót RPM nhờ throttle nhưng **forced-sleep 100–170s** cho doc dài → nguy cơ 504 (đã có item async-job/SSE trong TODO.md)
+- Ánh xạ quota không nhất quán: chỉ embed map `GeminiQuotaError`; `generate_knowledge_graph` nuốt lỗi quota → **500 thay vì 429** + retry 3× không backoff
+- JSON parse trần ở keywords/relevance/time-plan → **500 mờ**; stream Q&A lỗi giữa chừng → 200 cụt + lưu answer dở
+
+**Khuyến nghị (3 giai đoạn):** GĐ1 backoff+jitter (#2) + `Retry-After` (#1) + sửa summary/KG/JSON guard → GĐ2 async job + SSE (BackgroundTasks, chưa Redis) → GĐ3 token-bucket per-key (#4). Để embedding cache (#6) sau cùng.
+
+**Action Items**: xem cuối `docs/RESEARCH_api_strategy.md` (gắn tag `[Backend Worker]` / `[Frontend Worker]` / `[DB Worker]` / `[DevOps Worker]`).
+
+---
+
+## Phase 7 — Backend Rate-Limit Hardening (P0 / Giai đoạn 1) ✅ DONE
+
+**Worker**: Backend Worker (`/as-backend`)
+
+**Input**: `docs/RESEARCH_api_strategy.md` — Action Items P0.
+
+**Tasks:**
+- [x] **Choke point `_call_with_backoff`**: 1 wrapper retry exponential backoff + jitter cho MỌI call Gemini (embed + generation). Persistent 429 → `GeminiQuotaError` (429); non-quota → `GeminiServiceError` (502). Đọc `Retry-After`/`retry_delay` làm cận dưới; bỏ retry nếu server đòi chờ > 12s. `max_retries=2` cho Q&A (NFR <10s).
+- [x] **Viết lại `generate_summary`** (gốc 429 chính): từ `~N+1` call/512-char-chunk → **map-reduce trên segment ~12k ký tự** → còn vài call. Regression test khoá `< 15` call cho doc ~56k ký tự (cũ ~100+).
+- [x] **Fix `generate_knowledge_graph`**: chỉ `except json.JSONDecodeError` (quota KHÔNG còn bị nuốt → 429 đúng); bỏ `return {}` dead code; validate `nodes`/`edges`.
+- [x] **Guard JSON + `response.text`**: keywords/relevance/time-plan bọc `json.loads` + validate type; `_extract_text` bắt `ValueError` (candidate bị safety-block) → 502 thay vì 500 mờ.
+- [x] **Harden `_is_quota_error`**: walk `__cause__` chain (langchain bọc `ResourceExhausted` trong `GoogleGenerativeAIError`).
+- [x] **Stream Q&A** (`qa_service`): phát error frame in-band (`{"error","detail"}`) khi lỗi; **chỉ lưu `qa_history` khi stream hoàn tất** (không lưu answer dở); persist bọc try/except log.
+- [x] **Review đối kháng (3 lens read-only)** → xử lý 2 regression NFR-timing (medium): (1) `embed_query` dùng `max_retries=2` cho Q&A path (trước dùng default 3 → tổng embed+answer có thể vượt NFR <10s); (2) cap `SUMMARY_MAX_SEGMENTS=12` cho summary (map tuần tự + delay có thể vượt NFR <60s với doc rất dài). Cleanup: clamp 1 lần sleep ≤ ceiling; KG structural-invalid fail ngay (không retry-burst); payload cap `MAX_EXTRACTED_TEXT_CHARS=1M` (security.md).
+- [x] Test: **104 passed** (+20 regression test: backoff, retry budget embed_query=2/embed_texts=3, summary call-count + segment cap, KG quota-not-swallowed, JSON validation, extract_text guard, is_quota_error cause-chain, SSE error-frame).
+- [x] `docs/API.md`: thêm 429/502 + format SSE error frame.
+
+---
+
+## Phase 8 — Frontend Error Handling (P1 sau backend P0) ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Input**: action item `[Frontend Worker]` từ `docs/RESEARCH_api_strategy.md` + thay đổi backend Phase 7 (`docs/API.md`).
+
+**Tasks:**
+- [x] `services/qa.js` — `streamAsk` thêm callback `onError`: bắt cả (a) response không OK ban đầu (429/502 từ embed_query/auth, đọc `detail` từ JSON body) và (b) **in-band SSE error frame** `{"error","detail"}` giữa stream → phân biệt với token (object có key `error` vs token là JSON string). `[DONE]`/error là terminal.
+- [x] `understand-mode/QAPanel.jsx` — nối `onError` → banner lỗi (`var(--error)`/`var(--error-bg)`); reload history khi xong (drop optimistic question nếu stream lỗi, đồng bộ với backend "không lưu answer dở"); clear lỗi khi hỏi mới.
+- [x] `understand-mode/KnowledgeGraphPanel.jsx` — `catch {}` trống → surface `err.response.data.detail` (KG giờ phân biệt 429/502).
+- [x] `upload/UploadPage.jsx` — cảnh báo client-side khi `extracted_text` > `MAX_EXTRACTED_TEXT_CHARS` (1M, mirror backend) trước khi upload; đồng bộ màu lỗi/success sang `var(--error)`/`var(--success)`.
+- [x] Các panel Summary/Keywords/Relevance/TimePlan: **không đổi** — đã hiển thị sẵn `err.response.data.detail` → tự nhận message 429/502 mới.
+- [x] Test: **frontend 24 passed** (qa.test.js 7→10: error frame, terminal-on-error, non-ok detail); `npm run build` ✓.
+
+**Output artifacts:**
+- `frontend/src/services/qa.js`, `frontend/src/services/qa.test.js`
+- `frontend/src/features/document/understand-mode/QAPanel.jsx`, `KnowledgeGraphPanel.jsx`
+- `frontend/src/features/upload/UploadPage.jsx`
+
+**Còn lại (P1 backend):** ~~async job + SSE *progress* upload~~ → **đã làm ở Phase 9**.
+
+**Chưa làm (chuyển giai đoạn sau / worker khác):**
+- P1 `[Backend]`: async job + SSE progress upload (né 504 cho doc dài) — đã có item trong `TODO.md`.
+- P1 `[Frontend]`: xử lý error frame SSE + thông điệp 429/502 trên UI.
+- Cảnh báo (không fix trong P0): `_make_client` dùng `genai.configure` global → nguy cơ race key giữa request đồng thời (BYOK). Cần quyết định kiến trúc riêng (đổi sang client per-call / SDK mới) — escalate, không tự đổi.
+
+**Output artifacts:**
+- `backend/app/services/gemini_service.py` — rewrite: backoff choke point, map-reduce summary, KG fix, JSON/text guards
+- `backend/app/services/qa_service.py` — stream error frame + save-on-complete
+- `backend/tests/test_gemini_service.py` — +regression tests
+- `docs/API.md` — error responses 429/502 + SSE error frame
+
+---
+
+## Phase 9 — Async Upload + SSE Progress (P1) ✅ DONE
+
+**Worker**: Backend Worker (`/as-backend`) → Frontend Worker (`/as-frontend`)
+
+**Input**: item `SSE Progress cho Upload` trong `TODO.md`; mục "Còn lại" Phase 8.
+
+**Vấn đề**: `POST /api/documents` chạy chunk→embed→save **đồng bộ** trong HTTP request (100–170s với doc dài) → nguy cơ 504. FE chỉ có estimate-timer (đếm ngược ước lượng, không phải tiến trình thật).
+
+**Quyết định kiến trúc:**
+- SSE dùng **fetch-based** (không `EventSource`) để gửi JWT qua header `Authorization` — nhất quán với `qa/stream`, không lộ token qua query param. *(chốt với người dùng)*
+- Handle = `job_id` (không phải `doc_id`) → **không đổi schema DB**; document vẫn chỉ tạo sau khi embed xong (giữ invariant "không doc mồ côi"); `doc_id` trả trong event `done`.
+- Job store **in-memory per-process**; Gemini key BYOK chỉ giữ trong RAM, không persist. Hạn chế: **single-worker** (ghi rõ trong `docs/API.md`).
+
+**Tasks (Backend):**
+- [x] `gemini_service.embed_texts` — thêm `progress_callback(done, total)` gọi sau mỗi batch.
+- [x] `document_service.create_document` — nhận `progress_cb(step, percent)`; mốc chunking=5 / embedding 5–90 (map từ batch) / saving=95.
+- [x] `services/upload_job_service.py` (mới) — registry in-memory, `enqueue` (`asyncio.create_task` + session DB riêng), pipeline `_run`, SSE `build_progress_response` (push-based qua `asyncio.Queue`, keepalive 15s, TTL 300s, replay terminal khi reconnect).
+- [x] `routes/documents.py` — `POST` → **202** + `DocumentJobResponse{job_id}`.
+- [x] `routes/upload.py` (mới) — `GET /api/upload/{job_id}/progress` (auth JWT, chỉ chủ sở hữu, khác user → 404).
+- [x] Test: **113 passed** (test_documents 201→202 + 2 test transaction chuyển xuống tầng service; +9 `test_upload_job.py`: progress→done+doc_id, map lỗi quota/service/server, phân quyền 404, SSE stream + replay).
+
+**Tasks (Frontend):**
+- [x] `services/documents.js` — `create` trả `{job_id}`; thêm `streamProgress(jobId, {onProgress, onDone, onError})` (fetch-based SSE, bỏ qua keepalive, báo lỗi khi stream đóng sớm).
+- [x] `features/upload/UploadPage.jsx` — bỏ estimate-timer; progress bar + `%` realtime từ SSE; `onDone` → điều hướng `/document/{doc_id}`; `onError` → hiện lỗi, về `idle`; cleanup cancel khi unmount.
+- [x] Test: **frontend 32 passed** (+`documents.test.js` 8 test: progress→done, ghép frame qua chunk, error frame không gọi onDone, bỏ keepalive, non-ok detail, đóng sớm, header/cancel); `npm run build` ✓.
+
+**Output artifacts:**
+- `backend/app/services/upload_job_service.py`, `backend/app/routes/upload.py` (mới)
+- `backend/app/services/gemini_service.py`, `document_service.py`, `schemas/document.py`, `routes/documents.py`, `app/main.py`
+- `backend/tests/test_upload_job.py` (mới), `backend/tests/test_documents_api.py`
+- `frontend/src/services/documents.js`, `frontend/src/features/upload/UploadPage.jsx`, `frontend/src/services/documents.test.js`
+- `docs/API.md` (POST 202 + endpoint progress SSE), `TODO.md` (đánh dấu xong)
+
+**Còn lại:**
+- Multi-worker: job store cần shared bus (Redis pub/sub) — hiện single-worker.
+- Cảnh báo (chưa fix): `genai.configure` global race key BYOK (escalate, chờ quyết định kiến trúc).

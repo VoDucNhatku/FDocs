@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+tests/
+pytest.ini
+requirements-dev.txt
+.env
+.env.*
+.pytest_cache/
+*.md
+migrations/

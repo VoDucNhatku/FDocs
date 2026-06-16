@@ -4,6 +4,10 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+# Upper bound on extracted text (~160k words / ~600 pages). Guards against abusive
+# payloads and unbounded chunk/embedding fan-out per the security rule on payload size.
+MAX_EXTRACTED_TEXT_CHARS = 1_000_000
+
 
 class DocumentCreateRequest(BaseModel):
     title: str
@@ -23,9 +27,19 @@ class DocumentCreateRequest(BaseModel):
     @field_validator("extracted_text")
     @classmethod
     def validate_extracted_text(cls, v: str) -> str:
+        # PostgreSQL UTF-8 rejects \x00; strip before any DB or embedding operation.
+        v = v.replace("\x00", "")
         if not v.strip():
             raise ValueError("extracted_text cannot be empty")
+        if len(v) > MAX_EXTRACTED_TEXT_CHARS:
+            raise ValueError(f"extracted_text vượt giới hạn {MAX_EXTRACTED_TEXT_CHARS} ký tự")
         return v
+
+
+class DocumentJobResponse(BaseModel):
+    """Returned by POST /api/documents (202): the upload is processed asynchronously,
+    so the client gets a job handle to watch via GET /api/upload/{job_id}/progress."""
+    job_id: str
 
 
 class DocumentResponse(BaseModel):

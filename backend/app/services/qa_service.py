@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 
 from fastapi import HTTPException, status
@@ -9,6 +10,8 @@ from app.repositories.chunk_repository import ChunkRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.qa_repository import QARepository
 from app.services import gemini_service
+
+logger = logging.getLogger(__name__)
 
 
 class QAService:
@@ -54,15 +57,32 @@ class QAService:
 
         async def event_generator():
             full_answer_parts: list[str] = []
+            completed = False
             try:
                 async for token in gemini_service.answer_question_stream(question, context, gemini_key):
                     full_answer_parts.append(token)
                     # JSON-encode each token so newlines and special chars are safe in SSE data
                     yield f"data: {json.dumps(token)}\n\n"
+                completed = True
                 yield "data: [DONE]\n\n"
+            except gemini_service.GeminiQuotaError as e:
+                # HTTP 200 is already committed, so the only way to signal the client
+                # is an in-band error frame (not an HTTP status).
+                yield f"data: {json.dumps({'error': 'quota', 'detail': str(e)})}\n\n"
+            except gemini_service.GeminiServiceError as e:
+                yield f"data: {json.dumps({'error': 'service', 'detail': str(e)})}\n\n"
+            except Exception as e:
+                logger.error("Lỗi không mong đợi khi stream Q&A doc=%s: %s", doc_id, e, exc_info=True)
+                yield f"data: {json.dumps({'error': 'server', 'detail': 'Lỗi máy chủ khi trả lời.'})}\n\n"
             finally:
-                if full_answer_parts:
-                    await qa_repo.create(doc_id, question, "".join(full_answer_parts), sources)
+                # Persist only a fully-streamed answer — never save a truncated/failed one.
+                # [DONE] is already flushed by now, so a save failure cannot reach the
+                # client; log it instead of letting it bubble as an ASGI error.
+                if completed and full_answer_parts:
+                    try:
+                        await qa_repo.create(doc_id, question, "".join(full_answer_parts), sources)
+                    except Exception as e:
+                        logger.error("Không lưu được câu trả lời Q&A doc=%s sau khi stream xong: %s", doc_id, e, exc_info=True)
 
         return StreamingResponse(
             event_generator(),

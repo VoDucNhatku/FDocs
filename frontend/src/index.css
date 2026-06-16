@@ -67,28 +67,30 @@
   --info-bg:      rgba(59, 130, 246, 0.12);
 }
 
-/* ── Theme switch transition ─────────────────────────────── */
-/* Only transition color-related props so transform/opacity animations are unaffected */
-*, *::before, *::after {
-  transition-property: background-color, border-color, color;
-  transition-duration: 200ms;
-  transition-timing-function: ease-in-out;
+@layer base {
+  /* ── Theme switch transition ─────────────────────────────── */
+  /* Only transition color-related props so transform/opacity animations are unaffected */
+  *, *::before, *::after {
+    transition-property: background-color, border-color, color;
+    transition-duration: 200ms;
+    transition-timing-function: ease-in-out;
+  }
+
+  /* ── Base ────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { height: 100%; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    height: 100%;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root { height: 100%; }
 }
-
-/* ── Base ────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html { height: 100%; }
-
-body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background-color: var(--bg-base);
-  color: var(--text-primary);
-  height: 100%;
-  -webkit-font-smoothing: antialiased;
-}
-
-#root { height: 100%; }
 
 /* ── Reading typography ──────────────────────────────────── */
 .prose-reading {
