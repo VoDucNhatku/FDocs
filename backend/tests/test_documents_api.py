@@ -74,7 +74,7 @@ def mock_docs(monkeypatch):
             def __init__(self, db=None):
                 pass
 
-            async def bulk_create(self, doc_id, chunks):
+            async def bulk_create(self, doc_id, chunks, commit=True):
                 return None
 
         monkeypatch.setattr(document_service, "DocumentRepository", FakeDocRepo)
@@ -162,3 +162,90 @@ class TestDocumentValidation:
             json={"title": "X", "file_type": "pdf", "extracted_text": "nội dung"},
         )
         assert resp.status_code == 403
+
+    async def test_null_bytes_stripped_and_create_succeeds(self, client, mock_docs):
+        """PDF text with null bytes must not reach DB — validator strips them (regression: asyncpg.CharacterNotInRepertoireError)."""
+        mock_docs()
+        _authed()
+        null = chr(0)
+        text_with_nulls = f"Noi dung{null}co null{null}byte"
+        resp = await client.post(
+            "/api/documents",
+            json={"title": "PDF null byte", "file_type": "pdf", "extracted_text": text_with_nulls},
+        )
+        assert resp.status_code == 201
+
+    async def test_only_null_bytes_is_empty_422(self, client, mock_docs):
+        """Text consisting only of null bytes is treated as empty after stripping."""
+        mock_docs()
+        _authed()
+        null = chr(0)
+        resp = await client.post(
+            "/api/documents",
+            json={"title": "X", "file_type": "pdf", "extracted_text": null * 5},
+        )
+        assert resp.status_code == 422
+
+
+class TestDocumentTransaction:
+    """Regression: embedding ran AFTER the doc was committed, so a failed embedding
+    left an orphaned document with no chunks. Embedding now runs first and nothing is
+    persisted if it fails."""
+
+    def _wire(self, monkeypatch, embed_fn):
+        from app.services import document_service as ds
+
+        state = {"doc_created": False, "chunks_created": False}
+
+        class FakeDocRepo:
+            def __init__(self, db=None):
+                pass
+
+            async def create(self, **kwargs):
+                state["doc_created"] = True
+                return _Doc(TEST_USER_ID)
+
+        class FakeChunkRepo:
+            def __init__(self, db=None):
+                pass
+
+            async def bulk_create(self, doc_id, chunks, commit=True):
+                state["chunks_created"] = True
+
+        monkeypatch.setattr(ds, "DocumentRepository", FakeDocRepo)
+        monkeypatch.setattr(ds, "ChunkRepository", FakeChunkRepo)
+        monkeypatch.setattr(ds.gemini_service, "chunk_text", lambda t: ["c1"])
+        monkeypatch.setattr(ds.gemini_service, "embed_texts", embed_fn)
+        return state
+
+    async def test_embed_quota_error_returns_429_without_persisting(self, client, monkeypatch):
+        from app.services.gemini_service import GeminiQuotaError
+
+        async def quota_boom(texts, key):
+            raise GeminiQuotaError("Đã vượt giới hạn quota Gemini API.")
+
+        state = self._wire(monkeypatch, quota_boom)
+        _authed()
+        resp = await client.post(
+            "/api/documents",
+            json={"title": "X", "file_type": "pdf", "extracted_text": "nội dung"},
+        )
+        assert resp.status_code == 429
+        assert state["doc_created"] is False
+        assert state["chunks_created"] is False
+
+    async def test_embed_generic_error_returns_502_without_persisting(self, client, monkeypatch):
+        from app.services.gemini_service import GeminiServiceError
+
+        async def generic_boom(texts, key):
+            raise GeminiServiceError("Không thể tạo embedding từ Gemini API.")
+
+        state = self._wire(monkeypatch, generic_boom)
+        _authed()
+        resp = await client.post(
+            "/api/documents",
+            json={"title": "X", "file_type": "pdf", "extracted_text": "nội dung"},
+        )
+        assert resp.status_code == 502
+        assert state["doc_created"] is False
+        assert state["chunks_created"] is False

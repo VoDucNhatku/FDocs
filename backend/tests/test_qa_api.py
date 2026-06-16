@@ -11,7 +11,7 @@ import pytest
 from app.database import get_db
 from app.main import app
 from app.middlewares.auth import get_current_user_id, get_gemini_key
-from app.services import qa_service
+from app.services import gemini_service, qa_service
 from tests.conftest import TEST_GEMINI_KEY, TEST_USER_ID, _fake_get_db
 
 DOC_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -157,3 +157,45 @@ class TestQAGuards:
             headers={"X-Gemini-Key": "   "},
         )
         assert resp.status_code == 400
+
+
+class TestQAStreamError:
+    """Mid-stream quota error: status 200 is already committed, so the failure must
+    surface as an in-band SSE error frame (no [DONE]) and the partial answer must NOT
+    be persisted."""
+
+    async def test_quota_mid_stream_emits_error_frame_and_skips_save(self, client, monkeypatch):
+        created = {"called": False}
+        doc_repo, chunk_repo, _ = _make_fakes(TEST_USER_ID)
+
+        class FakeQARepo:
+            def __init__(self, db=None):
+                pass
+
+            async def create(self, doc_id, question, answer, sources):
+                created["called"] = True
+                return _QARow(question, answer, sources)
+
+        monkeypatch.setattr(qa_service, "DocumentRepository", doc_repo)
+        monkeypatch.setattr(qa_service, "ChunkRepository", chunk_repo)
+        monkeypatch.setattr(qa_service, "QARepository", FakeQARepo)
+
+        async def fake_embed_query(question, key):
+            return [0.1, 0.2, 0.3]
+
+        async def failing_stream(question, context, key):
+            yield "Đây "
+            yield "là "
+            raise gemini_service.GeminiQuotaError("vượt quota")
+
+        monkeypatch.setattr(qa_service.gemini_service, "embed_query", fake_embed_query)
+        monkeypatch.setattr(qa_service.gemini_service, "answer_question_stream", failing_stream)
+        _authed()
+
+        resp = await client.post(f"/api/documents/{DOC_ID}/qa/stream", json={"question": "?"})
+        assert resp.status_code == 200
+        body = resp.text
+        assert '"error": "quota"' in body          # in-band error frame emitted
+        assert "[DONE]" not in body                 # success terminator NOT sent on error
+        assert created["called"] is False           # truncated answer not persisted
+        app.dependency_overrides.clear()
