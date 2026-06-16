@@ -9,7 +9,7 @@ vi.mock('./api', () => ({
 import { qaService } from './qa'
 
 /** Tạo fake fetch trả về SSE body, chia byte theo `chunks` để test logic buffer qua ranh giới chunk. */
-function mockFetchSSE(chunks, { ok = true } = {}) {
+function mockFetchSSE(chunks, { ok = true, status = ok ? 200 : 429, detail } = {}) {
   const encoder = new TextEncoder()
   let i = 0
   const reader = {
@@ -18,7 +18,25 @@ function mockFetchSSE(chunks, { ok = true } = {}) {
       return { done: false, value: encoder.encode(chunks[i++]) }
     },
   }
-  return vi.fn(async () => ({ ok, body: ok ? { getReader: () => reader } : null }))
+  return vi.fn(async () => ({
+    ok,
+    status,
+    body: ok ? { getReader: () => reader } : null,
+    json: async () => ({ detail }),
+  }))
+}
+
+/** Chạy streamAsk, thu cả token / error / done theo thứ tự phát ra. */
+function collectEvents(...args) {
+  return new Promise((resolve) => {
+    const events = []
+    qaService.streamAsk(
+      ...args,
+      (t) => events.push({ type: 'token', value: t }),
+      () => { events.push({ type: 'done' }); resolve(events) },
+      (info) => events.push({ type: 'error', info }),
+    )
+  })
 }
 
 /** Chạy streamAsk tới khi onDone, trả về danh sách token nhận được. */
@@ -91,5 +109,34 @@ describe('qaService.streamAsk', () => {
     const cancel = qaService.streamAsk('d', 'q', () => {}, () => {})
     expect(typeof cancel).toBe('function')
     cancel()
+  })
+
+  it('routes an in-band error frame to onError after streamed tokens, then done', async () => {
+    global.fetch = mockFetchSSE([
+      'data: "Đây "\n\ndata: {"error": "quota", "detail": "Hết quota"}\n\n',
+    ])
+    const events = await collectEvents('d', 'q')
+    expect(events).toEqual([
+      { type: 'token', value: 'Đây ' },
+      { type: 'error', info: { error: 'quota', detail: 'Hết quota' } },
+      { type: 'done' },
+    ])
+  })
+
+  it('does not emit [DONE] handling once an error frame terminates the stream', async () => {
+    // A stray [DONE] after the error frame must never be reached.
+    global.fetch = mockFetchSSE([
+      'data: {"error": "service", "detail": "x"}\n\ndata: [DONE]\n\n',
+    ])
+    const events = await collectEvents('d', 'q')
+    expect(events.filter((e) => e.type === 'token')).toEqual([])
+    expect(events[0]).toEqual({ type: 'error', info: { error: 'service', detail: 'x' } })
+  })
+
+  it('surfaces a non-ok response detail via onError', async () => {
+    global.fetch = mockFetchSSE([], { ok: false, status: 429, detail: 'Đã vượt quota Gemini' })
+    const events = await collectEvents('d', 'q')
+    const err = events.find((e) => e.type === 'error')
+    expect(err.info).toEqual({ error: '429', detail: 'Đã vượt quota Gemini' })
   })
 })
