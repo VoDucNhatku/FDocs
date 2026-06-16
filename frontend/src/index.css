@@ -103,6 +103,14 @@
 .prose-reading p { margin-bottom: 1.25rem; }
 .prose-reading h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1rem; margin-top: 1.5rem; }
 .prose-reading h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.75rem; margin-top: 1.25rem; }
+.prose-reading h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; margin-top: 1rem; }
+.prose-reading ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+.prose-reading ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1rem; }
+.prose-reading li { margin-bottom: 0.375rem; }
+.prose-reading strong { font-weight: 700; }
+.prose-reading em { font-style: italic; }
+.prose-reading code { font-family: ui-monospace, monospace; font-size: 0.85em; background: var(--bg-muted); padding: 0.15em 0.35em; border-radius: 3px; }
+.prose-reading blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; color: var(--text-muted); }
 
 /* ── Shimmer skeleton ────────────────────────────────────── */
 @keyframes shimmer {

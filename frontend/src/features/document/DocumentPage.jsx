@@ -12,6 +12,7 @@ import { TimePlanPanel } from './read-mode/TimePlanPanel'
 import { RelatedDocsPanel } from './read-mode/RelatedDocsPanel'
 import { KnowledgeGraphPanel } from './understand-mode/KnowledgeGraphPanel'
 import { QAPanel } from './understand-mode/QAPanel'
+import { PdfViewer } from '@/components/PdfViewer'
 import { cn } from '@/utils/cn'
 
 const READ_TABS = ['Tóm tắt', 'Từ khóa', 'Độ phù hợp', 'Kế hoạch đọc', 'Tài liệu liên quan']
@@ -94,11 +95,11 @@ export function DocumentPage() {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto px-6 py-6">
-            <div className="prose-reading text-[var(--text-primary)] max-w-[640px] whitespace-pre-wrap">
-              {doc.extracted_text || (
-                <span className="text-[var(--text-muted)] italic text-sm">Không có văn bản.</span>
-              )}
-            </div>
+            <PdfViewer
+              docId={doc.id}
+              fileType={doc.file_type}
+              fallbackText={doc.extracted_text}
+            />
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Upload, FileText } from 'lucide-react'
 import { parsePdf } from '@/utils/pdf-parser'
 import { parseDocx } from '@/utils/docx-parser'
+import { savePdf } from '@/utils/pdf-store'
 import { documentService } from '@/services/documents'
 import { useGeminiKey } from '@/context/GeminiKeyContext'
 import { Button } from '@/components/ui/Button'
@@ -91,8 +92,14 @@ export function UploadPage() {
         onDone: ({ doc_id }) => {
           setPhase('done')
           setPercent(100)
-          if (doc_id) setTimeout(() => navigate(`/document/${doc_id}`), 600)
-          else setError('Xử lý xong nhưng không nhận được mã tài liệu.')
+          if (doc_id) {
+            if (ext === 'pdf') {
+              file.arrayBuffer().then((buf) => savePdf(doc_id, buf)).catch(() => {})
+            }
+            setTimeout(() => navigate(`/document/${doc_id}`), 600)
+          } else {
+            setError('Xử lý xong nhưng không nhận được mã tài liệu.')
+          }
         },
         onError: ({ detail }) => {
           setPhase('idle')

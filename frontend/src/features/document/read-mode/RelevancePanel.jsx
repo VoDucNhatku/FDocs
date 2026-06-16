@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { analysisService } from '@/services/analysis'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -76,7 +78,9 @@ export function RelevancePanel({ docId, cached, input: cachedInput, onUpdate }) 
             />
           </div>
           {result.explanation && (
-            <p className="text-sm text-[var(--text-muted)]">{result.explanation}</p>
+            <div className="prose-reading text-sm text-[var(--text-muted)]">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.explanation}</ReactMarkdown>
+            </div>
           )}
         </div>
       )}

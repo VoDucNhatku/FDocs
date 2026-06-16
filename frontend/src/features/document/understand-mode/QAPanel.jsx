@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { qaService } from '@/services/qa'
 import { Button } from '@/components/ui/Button'
 
@@ -68,7 +70,7 @@ export function QAPanel({ docId }) {
             </div>
             {item.answer && (
               <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
-                {item.answer}
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
               </div>
             )}
           </div>
@@ -76,7 +78,7 @@ export function QAPanel({ docId }) {
 
         {streaming && streamText && (
           <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
-            {streamText}
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
             <span className="inline-block w-1 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
           </div>
         )}
