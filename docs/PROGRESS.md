@@ -361,7 +361,7 @@ docker compose up -d
 - `frontend/src/features/document/understand-mode/QAPanel.jsx`, `KnowledgeGraphPanel.jsx`
 - `frontend/src/features/upload/UploadPage.jsx`
 
-**Còn lại (P1 backend, chưa làm):** async job + SSE *progress* upload (`POST /api/documents` → `202 + job_id`) để né 504 cho doc dài — `TODO.md`. Hiện FE vẫn dùng estimate-timer cũ trong `UploadPage`.
+**Còn lại (P1 backend):** ~~async job + SSE *progress* upload~~ → **đã làm ở Phase 9**.
 
 **Chưa làm (chuyển giai đoạn sau / worker khác):**
 - P1 `[Backend]`: async job + SSE progress upload (né 504 cho doc dài) — đã có item trong `TODO.md`.
@@ -373,3 +373,42 @@ docker compose up -d
 - `backend/app/services/qa_service.py` — stream error frame + save-on-complete
 - `backend/tests/test_gemini_service.py` — +regression tests
 - `docs/API.md` — error responses 429/502 + SSE error frame
+
+---
+
+## Phase 9 — Async Upload + SSE Progress (P1) ✅ DONE
+
+**Worker**: Backend Worker (`/as-backend`) → Frontend Worker (`/as-frontend`)
+
+**Input**: item `SSE Progress cho Upload` trong `TODO.md`; mục "Còn lại" Phase 8.
+
+**Vấn đề**: `POST /api/documents` chạy chunk→embed→save **đồng bộ** trong HTTP request (100–170s với doc dài) → nguy cơ 504. FE chỉ có estimate-timer (đếm ngược ước lượng, không phải tiến trình thật).
+
+**Quyết định kiến trúc:**
+- SSE dùng **fetch-based** (không `EventSource`) để gửi JWT qua header `Authorization` — nhất quán với `qa/stream`, không lộ token qua query param. *(chốt với người dùng)*
+- Handle = `job_id` (không phải `doc_id`) → **không đổi schema DB**; document vẫn chỉ tạo sau khi embed xong (giữ invariant "không doc mồ côi"); `doc_id` trả trong event `done`.
+- Job store **in-memory per-process**; Gemini key BYOK chỉ giữ trong RAM, không persist. Hạn chế: **single-worker** (ghi rõ trong `docs/API.md`).
+
+**Tasks (Backend):**
+- [x] `gemini_service.embed_texts` — thêm `progress_callback(done, total)` gọi sau mỗi batch.
+- [x] `document_service.create_document` — nhận `progress_cb(step, percent)`; mốc chunking=5 / embedding 5–90 (map từ batch) / saving=95.
+- [x] `services/upload_job_service.py` (mới) — registry in-memory, `enqueue` (`asyncio.create_task` + session DB riêng), pipeline `_run`, SSE `build_progress_response` (push-based qua `asyncio.Queue`, keepalive 15s, TTL 300s, replay terminal khi reconnect).
+- [x] `routes/documents.py` — `POST` → **202** + `DocumentJobResponse{job_id}`.
+- [x] `routes/upload.py` (mới) — `GET /api/upload/{job_id}/progress` (auth JWT, chỉ chủ sở hữu, khác user → 404).
+- [x] Test: **113 passed** (test_documents 201→202 + 2 test transaction chuyển xuống tầng service; +9 `test_upload_job.py`: progress→done+doc_id, map lỗi quota/service/server, phân quyền 404, SSE stream + replay).
+
+**Tasks (Frontend):**
+- [x] `services/documents.js` — `create` trả `{job_id}`; thêm `streamProgress(jobId, {onProgress, onDone, onError})` (fetch-based SSE, bỏ qua keepalive, báo lỗi khi stream đóng sớm).
+- [x] `features/upload/UploadPage.jsx` — bỏ estimate-timer; progress bar + `%` realtime từ SSE; `onDone` → điều hướng `/document/{doc_id}`; `onError` → hiện lỗi, về `idle`; cleanup cancel khi unmount.
+- [x] Test: **frontend 32 passed** (+`documents.test.js` 8 test: progress→done, ghép frame qua chunk, error frame không gọi onDone, bỏ keepalive, non-ok detail, đóng sớm, header/cancel); `npm run build` ✓.
+
+**Output artifacts:**
+- `backend/app/services/upload_job_service.py`, `backend/app/routes/upload.py` (mới)
+- `backend/app/services/gemini_service.py`, `document_service.py`, `schemas/document.py`, `routes/documents.py`, `app/main.py`
+- `backend/tests/test_upload_job.py` (mới), `backend/tests/test_documents_api.py`
+- `frontend/src/services/documents.js`, `frontend/src/features/upload/UploadPage.jsx`, `frontend/src/services/documents.test.js`
+- `docs/API.md` (POST 202 + endpoint progress SSE), `TODO.md` (đánh dấu xong)
+
+**Còn lại:**
+- Multi-worker: job store cần shared bus (Redis pub/sub) — hiện single-worker.
+- Cảnh báo (chưa fix): `genai.configure` global race key BYOK (escalate, chờ quyết định kiến trúc).

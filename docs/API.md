@@ -44,7 +44,7 @@ Xóa refresh token trên server + xóa cookie.
 ## Documents
 
 ### POST /api/documents
-Upload metadata + extracted text. Backend tự chunk + embed.  
+Upload metadata + extracted text. Backend tự chunk + embed **bất đồng bộ** (chạy nền), trả về ngay `job_id` để client theo dõi tiến trình — tránh giữ HTTP request mở 100-170s với tài liệu dài (nguy cơ 504).  
 **Auth + X-Gemini-Key required**
 
 **Body**
@@ -57,7 +57,33 @@ Upload metadata + extracted text. Backend tự chunk + embed.
   "extracted_text": "..."
 }
 ```
-**Response 201**: `DocumentResponse`
+**Response 202**: `{ "job_id": "<uuid>" }`
+
+Document **chưa** tồn tại tại thời điểm này — nó chỉ được tạo sau khi embedding thành công (giữ invariant "embed lỗi → không có document mồ côi"). Theo dõi qua `GET /api/upload/{job_id}/progress`; `doc_id` nằm trong event `done`.  
+`extracted_text` giới hạn 1,000,000 ký tự (422 nếu vượt).
+
+> **Lưu ý triển khai**: job state (gồm Gemini key BYOK) chỉ giữ **trong RAM tiến trình**, không persist. Hệ quả: chỉ hoạt động với **một worker** — nhiều uvicorn worker thì POST và progress stream có thể rơi vào tiến trình khác nhau (stream sẽ 404). Multi-worker cần shared bus (Redis) — ngoài phạm vi hiện tại.
+
+---
+
+### GET /api/upload/{job_id}/progress
+SSE stream tiến trình xử lý upload. **Auth required** (JWT qua header — client dùng fetch-based SSE, không phải `EventSource`, để gửi được `Authorization`). Chỉ chủ sở hữu job đọc được (job của user khác → 404).
+
+**Response**: `text/event-stream`. Mỗi event là một JSON object:
+```
+data: {"status":"processing","step":"chunking","progress":5}
+data: {"status":"processing","step":"embedding","progress":48}
+data: {"status":"processing","step":"saving","progress":95}
+data: {"status":"done","step":"done","progress":100,"doc_id":"<uuid>"}
+```
+- `step`: `queued | chunking | embedding | saving | done`; `progress`: 0–100.
+- Kết thúc thành công: event `status:"done"` kèm `doc_id`.
+- Kết thúc lỗi: event `status:"error"` kèm `error` (`quota | service | server`) + `detail` — **không** có event `done`:
+```
+data: {"status":"error","error":"quota","detail":"Đã vượt giới hạn quota Gemini API..."}
+```
+- Dòng comment `: keepalive` được phát mỗi 15s khi idle (client bỏ qua).
+- Job state giữ lại ~300s sau khi xong để client reconnect đọc lại trạng thái cuối.
 
 ---
 
@@ -244,4 +270,8 @@ QAResponse {
 
 Tất cả lỗi trả về: `{ "detail": "..." }`
 
-**Lưu ý mọi endpoint gọi AI** (documents POST, analyze/*, qa, related): lỗi quota Gemini nhất quán trả **429**, lỗi Gemini khác trả **502** (trước đây một số path rò thành 500). Với endpoint SSE (`qa/stream`), lỗi sau khi stream đã bắt đầu được phát dưới dạng error frame in-band (xem mục Q&A), không phải HTTP status.
+**Lưu ý mọi endpoint gọi AI** (analyze/*, qa, related): lỗi quota Gemini nhất quán trả **429**, lỗi Gemini khác trả **502** (trước đây một số path rò thành 500). Với các endpoint SSE, lỗi sau khi stream đã bắt đầu được phát dưới dạng **error frame in-band**, không phải HTTP status:
+- `qa/stream`: error frame `{"error","detail"}`, không có `[DONE]` (xem mục Q&A).
+- `upload/{job_id}/progress`: event `{"status":"error","error","detail"}`, không có event `done` (xem mục Documents).
+
+`POST /api/documents` giờ trả **202** ngay (xử lý nền) nên lỗi quota/Gemini của bước embed **không** còn là HTTP status của POST — chúng xuất hiện trong event lỗi của progress stream.
