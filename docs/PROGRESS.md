@@ -415,7 +415,7 @@ docker compose up -d
 
 ---
 
-## Phase 10 — UI Rendering Improvements 🔄 IN PROGRESS
+## Phase 10 — UI Rendering Improvements ✅ DONE
 
 **Worker**: Frontend Worker (`/as-frontend`)
 
@@ -424,24 +424,79 @@ docker compose up -d
 **Tasks:**
 
 ### Feature 1 — Markdown Rendering cho LLM Output
-- [ ] Cài `react-markdown` + `remark-gfm`
-- [ ] `SummaryPanel.jsx` — bọc summary text bằng `<ReactMarkdown>`
-- [ ] `QAPanel.jsx` — render markdown cho answer của từng Q&A item
-- [ ] `RelevancePanel.jsx` — render explanation text
-- [ ] `TimePlanPanel.jsx` — render nếu có markdown
+- [x] Cài `react-markdown` + `remark-gfm`
+- [x] `SummaryPanel.jsx` — bọc summary text bằng `<ReactMarkdown>`
+- [x] `QAPanel.jsx` — render markdown cho answer của từng Q&A item
+- [x] `RelevancePanel.jsx` — render explanation text
+- [x] `TimePlanPanel.jsx` — render nếu có markdown
 
 ### Feature 2 — PDF Viewer (pdf.js canvas)
-- [ ] `utils/pdf-store.js` (mới) — IndexedDB helpers: `savePdf(docId, arrayBuffer)`, `loadPdf(docId)`, `deletePdf(docId)`
-- [ ] `UploadPage.jsx` — sau khi nhận `doc_id` từ SSE `done` event, gọi `savePdf(doc_id, arrayBuffer)` (giữ file trong memory từ lúc parse)
-- [ ] `components/PdfViewer.jsx` (mới) — load từ IndexedDB, render từng trang qua pdf.js canvas, scroll infinite, fallback graceful nếu không tìm thấy
-- [ ] `DocumentPage.jsx` — thay "NỘI DUNG VĂN BẢN" text dump bằng `<PdfViewer docId={doc.id} fileType={doc.file_type} fallbackText={doc.extracted_text} />`
+- [x] `utils/pdf-store.js` (mới) — IndexedDB helpers: `savePdf(docId, arrayBuffer)`, `loadPdf(docId)`, `deletePdf(docId)`
+- [x] `UploadPage.jsx` — sau khi nhận `doc_id` từ SSE `done` event, gọi `savePdf(doc_id, arrayBuffer)` (giữ file trong memory từ lúc parse)
+- [x] `components/PdfViewer.jsx` (mới) — load từ IndexedDB, render từng trang qua pdf.js canvas, scroll infinite, fallback graceful nếu không tìm thấy
+- [x] `DocumentPage.jsx` — thay "NỘI DUNG VĂN BẢN" text dump bằng `<PdfViewer docId={doc.id} fileType={doc.file_type} fallbackText={doc.extracted_text} />`
 
-**Out of scope:**
-- DOCX rendering (text fallback)
-- Re-upload để xem lại PDF sau khi cache bị xóa
-- Syntax highlighting cho code block
+**Output artifacts:**
+- `frontend/src/utils/pdf-store.js` (mới)
+- `frontend/src/components/PdfViewer.jsx` (mới)
+- `frontend/src/features/document/DocumentPage.jsx`
+- `frontend/src/features/upload/UploadPage.jsx`
+- `frontend/src/features/document/read-mode/SummaryPanel.jsx`, `RelevancePanel.jsx`, `TimePlanPanel.jsx`
+- `frontend/src/features/document/understand-mode/QAPanel.jsx`
 
-**Ràng buộc kỹ thuật:**
-- `pdfjs-dist@6.0.227` đã có — không cài thêm
-- IndexedDB key: `pdf-<doc_id>`
-- DOCX và trường hợp IndexedDB miss → fallback extracted text, không crash
+---
+
+## Phase 11 — Prompt Engineering Implementation ✅ DONE
+
+**Worker**: Backend Worker (`/as-backend`)
+
+**Input**: `docs/PROMPT_ENG_spec.md` — complete spec với exact text sẵn sàng để implement.
+
+**Context**: Research Worker + Prompt Engineering Worker đã hoàn thành 2 giai đoạn research:
+- Per-Feature system instructions (Option B) được chọn — xem `docs/RESEARCH_system_prompt_design.md`
+- Exact prompt text cho tất cả 7 user-turn prompts + 2 system instructions — xem `docs/PROMPT_ENG_spec.md`
+
+**Vấn đề cần giải quyết:**
+- LLM output tiếng Anh cho tài liệu tiếng Việt (không có `system_instruction` nào trên model instances)
+- LLM thêm filler phrases ("Tất nhiên!", "Dưới đây là...") vì không có anti-filler rule
+- Hallucination trong Q&A ("có thể", "dựa trên logic suy ra") vì "say so" quá mơ hồ
+- KG node labels tiếng Anh, edge labels là noun phrase thay vì verb
+- Summary là plain text, không có structure dù Phase 10 đã render Markdown
+
+**Tasks (theo thứ tự — không đảo):**
+
+### P0 — System Instructions + Factory Functions (Risk: Thấp)
+- [x] Thêm `_SYSTEM_TEXT` constant vào `gemini_service.py` (exact text tại Phần 1.1 của spec)
+- [x] Thêm `_SYSTEM_JSON` constant vào `gemini_service.py` (exact text tại Phần 1.2 của spec)
+- [x] `_make_client(api_key, system_instruction=_SYSTEM_TEXT)` — thêm optional param
+- [x] `_make_json_client(api_key, schema, system_instruction=_SYSTEM_JSON)` — thêm optional param
+- [x] `extract_keywords`, `score_relevance`, `generate_time_plan` → `_make_client(..., system_instruction=_SYSTEM_JSON)`
+- [x] Run `pytest backend/` — **113 passed**
+
+### P1 — Summary + KG + Keywords Prompts (Risk: Thấp)
+- [x] `generate_summary` map step: Vietnamese prompt + ### heading + bullet list instruction
+- [x] `generate_summary` reduce step: Vietnamese prompt + ## heading + dedup + logical ordering
+- [x] `generate_knowledge_graph`: max 20 nodes + quality criteria + verb-phrase edge rule
+- [x] `extract_keywords`: Vietnamese prompt + 3-tier priority criteria
+- [x] Run `pytest backend/` — **113 passed**
+
+### P2a — Relevance Prompt (Risk: Trung bình)
+- [x] `score_relevance`: Vietnamese prompt + 5-range rubric + 3-sentence explanation with **bold**
+- [x] Run `pytest backend/` — **113 passed**
+
+### P2b — Q&A Prompt (Risk: Trung bình)
+- [x] Extract `_qa_prompt()` shared helper — dùng cho cả `answer_question` + `answer_question_stream`
+- [x] Vietnamese prompt + language-override ("Trả lời bằng cùng ngôn ngữ với câu hỏi")
+- [x] Specific fallback phrase + explicit ban hedging language
+- [x] Run `pytest backend/` — **113 passed**
+
+**Output artifacts:**
+- `backend/app/services/gemini_service.py` — 4 commits: P0 (system instructions + factory), P1 (summary/kg/keywords), P2a (relevance), P2b (Q&A)
+- `backend/tests/test_gemini_service.py` — cập nhật lambda mocks để nhận `**kw`
+
+**Test thủ công cần verify sau khi deploy:**
+1. Upload tài liệu tiếng Việt → Summary có heading/bullet, tiếng Việt
+2. Upload tài liệu tiếng Anh → Summary tiếng Anh
+3. Q&A: hỏi tiếng Việt trên tài liệu tiếng Anh → reply tiếng Việt
+4. Q&A: hỏi ngoài tài liệu → chỉ "Tài liệu không đề cập đến điều này."
+5. KG: node labels đúng ngôn ngữ, edge labels là verb phrase, ≤ 20 nodes
