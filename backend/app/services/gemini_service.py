@@ -27,6 +27,36 @@ _QUOTA_MSG = (
     "Thử lại sau ít phút hoặc dùng tài liệu nhỏ hơn."
 )
 
+_SYSTEM_TEXT = """\
+Bạn là trợ lý học thuật của FDocs — ứng dụng giúp sinh viên đọc tài liệu học thuật.
+
+NGÔN NGỮ: Phát hiện ngôn ngữ chủ đạo từ nội dung tài liệu được cung cấp:
+- Tài liệu tiếng Việt → trả lời tiếng Việt
+- Tài liệu tiếng Anh → trả lời tiếng Anh
+- Tài liệu mixed → ưu tiên tiếng Việt
+(Nếu user-turn chỉ định ngôn ngữ khác → ưu tiên theo user-turn)
+
+GROUNDING: Chỉ sử dụng thông tin từ nội dung tài liệu được cung cấp trong prompt. Không bổ sung từ kiến thức bên ngoài. Nếu thông tin không có trong tài liệu → dùng đúng cụm "Tài liệu không đề cập đến điều này."
+
+ĐỊNH DẠNG: Dùng Markdown khi hữu ích:
+- ### heading cho chủ đề lớn (trong summary)
+- **bold** cho khái niệm quan trọng hoặc trích dẫn chứng cứ
+- - bullet list cho điểm liệt kê
+Không dùng Markdown cho câu trả lời ngắn (1–2 câu).
+
+PHONG CÁCH: Học thuật, súc tích. Không mở đầu bằng: "Tất nhiên!", "Dưới đây là...", "Tôi rất vui được...", "Chắc chắn rồi!". Không kết thúc bằng: "Hy vọng hữu ích!", "Nếu bạn có câu hỏi...", "Tóm lại,".\
+"""
+
+_SYSTEM_JSON = """\
+Bạn là trợ lý học thuật của FDocs — ứng dụng giúp sinh viên đọc tài liệu học thuật.
+
+OUTPUT: Trả về ĐÚNG định dạng JSON như mô tả trong prompt. Không thêm text, markdown, code fence (```json), hay giải thích nào bên ngoài JSON. JSON minified (không có whitespace thừa).
+
+NGÔN NGỮ: Phát hiện ngôn ngữ chủ đạo từ nội dung tài liệu. Các trường text trong JSON (label, explanation, title, relation, tên phần) phải dùng ngôn ngữ đó. Ưu tiên tiếng Việt nếu mixed.
+
+GROUNDING: Chỉ sử dụng thông tin từ nội dung tài liệu được cung cấp. Không bổ sung từ kiến thức bên ngoài.\
+"""
+
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
 # text-embedding-004 was shut down by Google on 2026-01-14; gemini-embedding-001
@@ -101,15 +131,16 @@ KG_SCHEMA = {
 }
 
 
-def _make_client(api_key: str) -> genai.GenerativeModel:
+def _make_client(api_key: str, system_instruction: str = _SYSTEM_TEXT) -> genai.GenerativeModel:
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel(GENERATION_MODEL)
+    return genai.GenerativeModel(GENERATION_MODEL, system_instruction=system_instruction)
 
 
-def _make_json_client(api_key: str, schema: dict) -> genai.GenerativeModel:
+def _make_json_client(api_key: str, schema: dict, system_instruction: str = _SYSTEM_JSON) -> genai.GenerativeModel:
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(
         GENERATION_MODEL,
+        system_instruction=system_instruction,
         generation_config=genai.GenerationConfig(
             response_mime_type="application/json",
             response_schema=schema,
@@ -312,7 +343,7 @@ async def generate_summary(text: str, api_key: str) -> str:
 
 
 async def extract_keywords(text: str, api_key: str) -> list[str]:
-    model = _make_client(api_key)
+    model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     truncated = text[:8000]
     response = await _call_with_backoff(
         lambda: model.generate_content_async(
@@ -329,7 +360,7 @@ async def extract_keywords(text: str, api_key: str) -> list[str]:
 
 
 async def score_relevance(text: str, goal: str, keywords: list[str], topic: str, api_key: str) -> dict:
-    model = _make_client(api_key)
+    model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     truncated = text[:6000]
     prompt = (
         f"Evaluate how relevant this document is to the user's need.\n"
@@ -353,7 +384,7 @@ async def score_relevance(text: str, goal: str, keywords: list[str], topic: str,
 
 
 async def generate_time_plan(sections: list | None, word_count: int, start_date: str, deadline: str, hours_per_day: float, api_key: str) -> list:
-    model = _make_client(api_key)
+    model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     sections_info = json.dumps(sections) if sections else "No section structure detected; divide by word count."
     prompt = (
         f"Create a reading plan for a document.\n"
