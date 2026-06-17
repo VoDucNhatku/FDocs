@@ -382,13 +382,24 @@ async def extract_keywords(text: str, api_key: str) -> list[str]:
 async def score_relevance(text: str, goal: str, keywords: list[str], topic: str, api_key: str) -> dict:
     model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     truncated = text[:6000]
+    keywords_joined = ", ".join(keywords)
     prompt = (
-        f"Evaluate how relevant this document is to the user's need.\n"
-        f"User goal: {goal}\n"
-        f"Keywords of interest: {', '.join(keywords)}\n"
-        f"Topic: {topic}\n\n"
-        f"Document excerpt:\n{truncated}\n\n"
-        f"Return ONLY a JSON object: {{\"score\": <float 0-1>, \"explanation\": \"<1-2 sentences>\"}}"
+        "Đánh giá mức độ phù hợp của tài liệu với nhu cầu của người dùng.\n\n"
+        "Nhu cầu người dùng:\n"
+        f"- Mục tiêu học tập: {goal}\n"
+        f"- Từ khóa quan tâm: {keywords_joined}\n"
+        f"- Chủ đề: {topic}\n\n"
+        f"Trích đoạn tài liệu:\n{truncated}\n\n"
+        "Thang điểm:\n"
+        "- 0.85–1.0: Trực tiếp phục vụ mục tiêu, bao phủ phần lớn từ khóa\n"
+        "- 0.60–0.84: Liên quan đáng kể, có nội dung hữu ích rõ ràng\n"
+        "- 0.35–0.59: Liên quan gián tiếp, chỉ chạm một phần nhu cầu\n"
+        "- 0.10–0.34: Ít liên quan, thông tin ngoài lề\n"
+        "- 0.00–0.09: Không phù hợp\n\n"
+        'Trả về JSON: {"score": <float 0.0–1.0, 2 chữ số thập phân>, '
+        '"explanation": "<2–3 câu: (1) điểm số được cho vì lý do gì, '
+        "(2) điểm mạnh của tài liệu với nhu cầu này, "
+        '(3) điểm còn thiếu nếu có. Dùng **bold** cho lý do chính.>"}'
     )
     response = await _call_with_backoff(
         lambda: model.generate_content_async(prompt), what="đánh giá độ liên quan"
