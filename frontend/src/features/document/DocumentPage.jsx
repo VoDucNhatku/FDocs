@@ -184,24 +184,22 @@ export function DocumentPage() {
           ))}
         </div>
 
-        {/* Panel content */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {mode === 'read' && (
-            <>
-              {activeTab === 0 && <SummaryPanel docId={docId} cached={analysis?.summary} onUpdate={(v) => setAnalysis((a) => ({ ...a, summary: v }))} />}
-              {activeTab === 1 && <KeywordsPanel docId={docId} cached={analysis?.keywords} onUpdate={(v) => setAnalysis((a) => ({ ...a, keywords: v }))} />}
-              {activeTab === 2 && <RelevancePanel docId={docId} cached={analysis?.relevance_score} input={analysis?.relevance_input} onUpdate={(v) => setAnalysis((a) => ({ ...a, ...v }))} />}
-              {activeTab === 3 && <TimePlanPanel docId={docId} cached={analysis?.time_plan} input={analysis?.time_plan_input} onUpdate={(v) => setAnalysis((a) => ({ ...a, time_plan: v }))} />}
-              {activeTab === 4 && <RelatedDocsPanel docId={docId} />}
-            </>
-          )}
-          {mode === 'understand' && (
-            <>
-              {activeTab === 0 && <KnowledgeGraphPanel docId={docId} cached={analysis?.kg} onUpdate={(v) => setAnalysis((a) => ({ ...a, kg: v }))} />}
-              {activeTab === 1 && <QAPanel docId={docId} />}
-            </>
-          )}
-        </div>
+        {/* Panel content — read mode scrolls at this level; understand mode panels manage their own scroll */}
+        {mode === 'read' && (
+          <div className="flex-1 overflow-y-auto p-5">
+            {activeTab === 0 && <SummaryPanel docId={docId} cached={analysis?.summary} onUpdate={(v) => setAnalysis((a) => ({ ...a, summary: v }))} />}
+            {activeTab === 1 && <KeywordsPanel docId={docId} cached={analysis?.keywords} onUpdate={(v) => setAnalysis((a) => ({ ...a, keywords: v }))} />}
+            {activeTab === 2 && <RelevancePanel docId={docId} cached={analysis?.relevance_score} input={analysis?.relevance_input} onUpdate={(v) => setAnalysis((a) => ({ ...a, ...v }))} />}
+            {activeTab === 3 && <TimePlanPanel docId={docId} cached={analysis?.time_plan} input={analysis?.time_plan_input} onUpdate={(v) => setAnalysis((a) => ({ ...a, time_plan: v }))} />}
+            {activeTab === 4 && <RelatedDocsPanel docId={docId} />}
+          </div>
+        )}
+        {mode === 'understand' && (
+          <div className="flex-1 overflow-hidden">
+            {activeTab === 0 && <KnowledgeGraphPanel docId={docId} cached={analysis?.kg} onUpdate={(v) => setAnalysis((a) => ({ ...a, kg: v }))} />}
+            {activeTab === 1 && <QAPanel docId={docId} />}
+          </div>
+        )}
       </div>
     </div>
   )

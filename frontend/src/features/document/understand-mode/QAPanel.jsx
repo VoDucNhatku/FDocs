@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
-import { Send } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Send, Trash2 } from 'lucide-react'
+import { MarkdownLatex } from '@/components/ui/MarkdownLatex'
 import { qaService } from '@/services/qa'
 import { Button } from '@/components/ui/Button'
+
+function formatTime(ts) {
+  if (!ts) return ''
+  return new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+}
 
 export function QAPanel({ docId }) {
   const [history, setHistory] = useState([])
@@ -11,15 +15,45 @@ export function QAPanel({ docId }) {
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [error, setError] = useState('')
+  const scrollContainerRef = useRef(null)
   const bottomRef = useRef(null)
+  // Track IDs cleared locally so backend reload after stream doesn't restore them
+  const excludedIdsRef = useRef(new Set())
+
+  const hasContent = history.length > 0 || streaming || !!error
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [])
 
   useEffect(() => {
-    qaService.history(docId).then(setHistory)
+    qaService.history(docId).then((data) =>
+      setHistory(data.filter((item) => !excludedIdsRef.current.has(String(item.id))))
+    )
   }, [docId])
 
+  // Issue 2: scroll before paint to prevent flash-to-top on history reload
+  useLayoutEffect(() => {
+    scrollToBottom()
+  }, [history, streamText, scrollToBottom])
+
+  // Issue 3: re-observe inner div when content appears; ResizeObserver fires when KaTeX expands DOM
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [history, streamText])
+    const container = scrollContainerRef.current
+    if (!container) return
+    const inner = container.firstElementChild
+    if (!inner) return
+    const observer = new ResizeObserver(scrollToBottom)
+    observer.observe(inner)
+    return () => observer.disconnect()
+  }, [hasContent, scrollToBottom])
+
+  const handleClear = () => {
+    history.forEach((item) => excludedIdsRef.current.add(String(item.id)))
+    setHistory([])
+    setError('')
+    setStreamText('')
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -30,7 +64,7 @@ export function QAPanel({ docId }) {
     setStreamText('')
     setError('')
 
-    const optimisticQ = { id: Date.now(), question: q, answer: null, sources: null }
+    const optimisticQ = { id: Date.now(), question: q, answer: null, sources: null, created_at: new Date().toISOString() }
     setHistory((h) => [...h, optimisticQ])
 
     let fullAnswer = ''
@@ -44,10 +78,8 @@ export function QAPanel({ docId }) {
       async () => {
         setStreaming(false)
         setStreamText('')
-        // Backend persists only a fully-streamed answer; reload to reflect the truth
-        // (drops the optimistic question if the stream errored before saving).
         const updated = await qaService.history(docId)
-        setHistory(updated)
+        setHistory(updated.filter((item) => !excludedIdsRef.current.has(String(item.id))))
         cleanup?.()
       },
       (info) => {
@@ -57,39 +89,62 @@ export function QAPanel({ docId }) {
   }
 
   return (
-    <div className="flex flex-col h-full gap-0">
-      <div className="flex-1 overflow-y-auto flex flex-col gap-4 pb-4">
-        {history.length === 0 && (
-          <p className="text-sm text-[var(--text-muted)]">Hỏi bất kỳ điều gì về tài liệu này.</p>
-        )}
-
-        {history.map((item) => (
-          <div key={item.id} className="flex flex-col gap-2">
-            <div className="self-end max-w-[80%] rounded-xl rounded-br-sm bg-[var(--accent)] text-[var(--accent-fg)] px-4 py-2 text-sm">
-              {item.question}
-            </div>
-            {item.answer && (
-              <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
+    <div className="flex flex-col h-full gap-0 px-5 pt-5 pb-4">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
+        {!hasContent ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-center py-8">
+            <p className="text-sm text-[var(--text-muted)]">Chưa có câu hỏi nào.</p>
+            <p className="text-xs text-[var(--text-muted)] opacity-70">Đặt câu hỏi về tài liệu phía dưới để bắt đầu.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col justify-end min-h-full gap-4 pb-4">
+            {history.length > 0 && !streaming && (
+              <div className="flex justify-end pb-2">
+                <Button size="sm" variant="ghost" onClick={handleClear}>
+                  <Trash2 size={14} className="mr-1.5" />
+                  Xóa lịch sử
+                </Button>
               </div>
             )}
-          </div>
-        ))}
 
-        {streaming && streamText && (
-          <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
-            <span className="inline-block w-1 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
+            {history.map((item) => (
+              <div key={item.id} className="flex flex-col gap-2">
+                <div className="self-end flex flex-col items-end gap-0.5">
+                  <div className="max-w-[80%] rounded-xl rounded-br-sm bg-[var(--accent)] text-[var(--accent-fg)] px-4 py-2 text-sm">
+                    {item.question}
+                  </div>
+                  {item.created_at && (
+                    <span className="text-[10px] text-[var(--text-muted)] opacity-60 pr-1">
+                      {formatTime(item.created_at)}
+                    </span>
+                  )}
+                </div>
+                {item.answer && (
+                  <div className="self-start flex flex-col items-start gap-0.5">
+                    <div className="max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
+                      <MarkdownLatex>{item.answer}</MarkdownLatex>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {streaming && streamText && (
+              <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm bg-[var(--bg-muted)] px-4 py-3 text-sm text-[var(--text-primary)] prose-reading leading-relaxed">
+                <MarkdownLatex>{streamText}</MarkdownLatex>
+                <span className="inline-block w-1 h-4 bg-[var(--accent)] animate-pulse ml-0.5 align-middle" />
+              </div>
+            )}
+
+            {error && (
+              <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm border border-[var(--error)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
+                {error}
+              </div>
+            )}
+
+            <div ref={bottomRef} />
           </div>
         )}
-
-        {error && (
-          <div className="self-start max-w-[90%] rounded-xl rounded-bl-sm border border-[var(--error)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
-            {error}
-          </div>
-        )}
-
-        <div ref={bottomRef} />
       </div>
 
       <form onSubmit={submit} className="flex gap-2 pt-4 border-t border-[var(--border)]">

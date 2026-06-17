@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { MarkdownLatex } from '@/components/ui/MarkdownLatex'
 import { analysisService } from '@/services/analysis'
 import { Button } from '@/components/ui/Button'
 
@@ -42,7 +41,7 @@ export function SummaryPanel({ docId, cached, onUpdate }) {
 
       {!loading && cached && (
         <div className="prose-reading rounded-xl bg-[var(--bg-muted)] p-5 text-[var(--text-primary)] animate-page-in">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{cached}</ReactMarkdown>
+          <MarkdownLatex>{cached}</MarkdownLatex>
         </div>
       )}
 

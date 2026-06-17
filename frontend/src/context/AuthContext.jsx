@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { authService } from '@/services/auth'
 
 const AuthContext = createContext(null)
@@ -6,6 +6,18 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [accessToken, setAccessToken] = useState(null)
   const [user, setUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    authService.refresh()
+      .then((data) => {
+        setAccessToken(data.access_token)
+      })
+      .catch(() => {})
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
 
   const login = useCallback(async (email, password) => {
     const data = await authService.login(email, password)
@@ -31,7 +43,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ accessToken, user, login, register, logout, refreshToken, isAuthenticated: !!accessToken }}>
+    <AuthContext.Provider value={{ accessToken, user, login, register, logout, refreshToken, isAuthenticated: !!accessToken, isLoading }}>
       {children}
     </AuthContext.Provider>
   )

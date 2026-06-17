@@ -12,14 +12,12 @@ function loadCollapsed() {
 }
 
 export function AppLayout() {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, logout, isLoading } = useAuth()
   const { hasKey } = useGeminiKey()
   const [paletteAction, setPaletteAction] = useState(null)
   const [collapsed, setCollapsed] = useState(loadCollapsed)
   const [focusMode, setFocusMode] = useState(false)
   const { docId } = useParams()
-
-  if (!isAuthenticated) return <Navigate to="/login" replace />
 
   const toggleCollapsed = () =>
     setCollapsed((prev) => {
@@ -37,6 +35,9 @@ export function AppLayout() {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [])
+
+  if (isLoading) return null
+  if (!isAuthenticated) return <Navigate to="/login" replace />
 
   const sidebarHidden = focusMode
   const sidebarWidth = sidebarHidden ? 'w-0 overflow-hidden border-r-0' : collapsed ? 'w-14' : 'w-60'

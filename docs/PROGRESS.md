@@ -500,3 +500,168 @@ docker compose up -d
 3. Q&A: hỏi tiếng Việt trên tài liệu tiếng Anh → reply tiếng Việt
 4. Q&A: hỏi ngoài tài liệu → chỉ "Tài liệu không đề cập đến điều này."
 5. KG: node labels đúng ngôn ngữ, edge labels là verb phrase, ≤ 20 nodes
+
+---
+
+## Phase 3e — Knowledge Graph UI Enhancement ✅ DONE
+
+**Workers**: Designer Worker (`/as-designer`) → Frontend Worker (`/as-frontend`)
+
+**Tasks:**
+- [x] Design spec đầy đủ: `docs/KG_DESIGN_SPEC.md` — hover tooltip, click highlight, legend, table fallback
+- [x] Edge label improvements: font-size 9→10, text-background pill, opacity 0.7 baseline
+- [x] Legend: DOM element absolute bottom-right, 3 rows (concept/entity/process), ẩn mobile
+- [x] Hover tooltip: DOM-based, delay 120ms, flip logic rìa canvas, ẩn trên touch device
+- [x] Click highlight: ego network (dimmed/highlighted/selected classes), deselect click 2 lần, reset click empty
+- [x] Double-click node: fit neighborhood (animated 400ms)
+- [x] Fit button: reset highlight trước khi fit
+- [x] OQ-2: ẩn edge labels khi > 25 edges + "Hide/Show labels" toggle
+- [x] Accessibility table fallback: `KGTable.jsx` riêng, 2 tabs Nodes/Edges, sticky header, ARIA đầy đủ
+- [x] Error color: đổi `text-red-500` → `text-[var(--error)]`
+- [x] Build verified: ✓
+
+**Output artifacts:**
+- `frontend/src/features/document/understand-mode/KnowledgeGraphPanel.jsx` — enhanced
+- `frontend/src/features/document/understand-mode/KGTable.jsx` — file mới
+- `docs/KG_DESIGN_SPEC.md` — design spec
+
+---
+
+## Phase 3e.1 — Knowledge Graph Visual Fixes ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Input**: Feedback trực tiếp từ screenshot người dùng (play3cr.dpdns.org).
+
+**Tasks:**
+- [x] Node auto-size: `width/height: 'label'` + `padding: '10px 14px'` + `text-max-width: 130` + `font-size: 12`
+- [x] Layout params: `nodeRepulsion 8000→450000`, `idealEdgeLength 100→160`, `gravity 0.25`, `numIter 1500`, extract `COSE_LAYOUT` constant
+- [x] Nút "Rearrange": re-run COSE layout không destroy graph, chỉ hiện khi có graph
+- [x] Edge label contrast: thêm `edgeLabel` color vào `THEME_COLORS` (neutral: #64748B, cream: #7C6E5C, dark: #A1A1AA), `text-background-opacity 0.85→0.92`
+- [x] Build verified: ✓
+
+**Output artifacts:**
+- `frontend/src/features/document/understand-mode/KnowledgeGraphPanel.jsx`
+
+---
+
+## Phase 16 — Prompt Engineering Update: Grounding + LaTeX ✅ DONE
+
+**Worker**: Prompt Engineering Worker
+
+**Issues addressed:**
+1. **Q&A grounding quá strict**: Câu hỏi tổng quan ("Chapter này nói về gì?") bị trả "Tài liệu không đề cập" dù chunks chứa đủ nội dung.
+2. **LaTeX**: Frontend đã render KaTeX (Phase 13) nhưng LLM chưa biết → không dùng LaTeX.
+
+**Root cause grounding bug**: Rule "Nếu câu trả lời KHÔNG có trong ngữ cảnh" bị model áp dụng quá literal — câu hỏi tổng quan cần synthesis, không phải lookup câu explicit.
+
+**Tasks:**
+- [x] `_SYSTEM_TEXT`: Sửa GROUNDING — thêm "Tổng hợp và suy luận từ nội dung được cung cấp là hợp lệ"
+- [x] `_SYSTEM_TEXT`: Thêm ĐỊNH DẠNG LaTeX — `$...$` inline, `$$...$$` display, mention KaTeX
+- [x] `_qa_prompt`: Relaxed grounding rule — "có thể rút ra (trực tiếp hoặc tổng hợp)"
+- [x] `_qa_prompt`: Explicit carve-out cho overview questions ("nói về gì?", "chủ đề là gì?")
+- [x] `_qa_prompt`: Làm rõ fallback — "THỰC SỰ VẮNG MẶT trong toàn bộ ngữ cảnh"
+- [x] `docs/PROMPT_ENG_spec.md`: Cập nhật 2.7 + thêm mục 2.8
+
+**Output artifacts:**
+- `backend/app/services/gemini_service.py` — `_SYSTEM_TEXT`, `_qa_prompt` updated
+- `docs/PROMPT_ENG_spec.md` — Section 2.7 revised, Section 2.8 added
+
+---
+
+## Phase 15b — Hotfix: React error #310 ✅ DONE
+
+**Bug**: React error #310 "Rendered more hooks than during previous render" sau Phase 15.
+
+**Root cause**: `useEffect` ở dòng 32 của `AppLayout.jsx` nằm SAU `if (isLoading) return null` (dòng 22). Khi `isLoading=true` React gọi 6 hooks; khi `false` gọi 7 hooks → vi phạm Rules of Hooks.
+
+**Fix**: Di chuyển `toggleCollapsed` + `useEffect` lên trước cả hai early returns — tất cả hooks phải được gọi trước bất kỳ conditional return nào.
+
+**Output:** `frontend/src/layouts/AppLayout.jsx` — build ✓ 2.39s
+
+---
+
+## Phase 15 — Session Persistence Fix ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Bug**: Refresh trang → user bị logout vì `accessToken` lưu trong React state (reset về `null` khi reload). Refresh token httpOnly cookie vẫn còn nhưng không được dùng.
+
+**Root cause**: `AuthContext` không gọi `authService.refresh()` khi mount. `AppLayout` redirect `/login` ngay khi `!isAuthenticated` mà không chờ refresh attempt.
+
+**Fix:**
+- [x] `AuthContext.jsx` — thêm `isLoading = true` state + `useEffect` gọi `authService.refresh()` on mount; set `isLoading = false` trong `.finally()`; expose `isLoading` qua context
+- [x] `AppLayout.jsx` — thêm guard `if (isLoading) return null` trước `if (!isAuthenticated)` redirect
+- [x] Build verified: ✓ 2.07s
+
+**Output artifacts:**
+- `frontend/src/context/AuthContext.jsx`
+- `frontend/src/layouts/AppLayout.jsx`
+
+---
+
+## Phase 14 — Q&A UX Improvements ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Tasks:**
+- [x] Nút "Xóa lịch sử" (Trash2 icon, ghost/sm): hiện khi có history + không đang streaming, xóa local state
+- [x] Auto-scroll fix: wrap `scrollIntoView` trong `setTimeout(50ms)` với cleanup để tránh race condition DOM
+- [x] Message order verified: oldest-first (chronological) = tự nhiên như chat, không cần thay đổi
+- [x] Empty state cải thiện: 2 dòng centered thay vì 1 dòng text đơn
+- [x] Build verified: ✓ 2.03s
+
+**Output artifacts:**
+- `frontend/src/features/document/understand-mode/QAPanel.jsx`
+
+---
+
+## Phase 13 — LaTeX + Markdown Rendering ✅ DONE
+
+**Worker**: Frontend Worker (`/as-frontend`)
+
+**Tasks:**
+- [x] Install `remark-math`, `rehype-katex`, `katex`
+- [x] `main.jsx` — import `katex/dist/katex.min.css`
+- [x] `components/ui/MarkdownLatex.jsx` — shared component wrap ReactMarkdown + remarkGfm + remarkMath + rehypeKatex
+- [x] `SummaryPanel.jsx` — dùng `MarkdownLatex` thay ReactMarkdown
+- [x] `RelevancePanel.jsx` — dùng `MarkdownLatex`
+- [x] `QAPanel.jsx` — dùng `MarkdownLatex` cho cả history answers và streaming text
+- [x] Build verified: ✓ 2457 modules
+
+**Output artifacts:**
+- `frontend/src/components/ui/MarkdownLatex.jsx` — file mới
+- `frontend/src/main.jsx`, `SummaryPanel.jsx`, `RelevancePanel.jsx`, `QAPanel.jsx`
+
+---
+
+## Phase 12 — Settings Page 🚧 IN PROGRESS
+
+**Workers**: Frontend Worker (`/as-frontend`) → Backend Worker (`/as-backend`)
+
+**Mục tiêu**: Trang `/settings` tập trung cho phép user cấu hình language preference của AI responses + quản lý API key.
+
+**Quyết định kiến trúc:**
+- Storage: `localStorage` — không cần backend endpoint mới cho settings
+- Language preference: `fdocs:lang` (`auto | vi | en`)
+- Backend nhận preference qua header `X-Response-Language` (optional)
+- Frontend Worker làm trước — không block backend
+
+### Frontend Tasks
+- [ ] `LanguagePrefContext` — expose `lang` (`auto|vi|en`) + `setLang`, persist `localStorage` key `fdocs:lang`
+- [ ] `/settings` page với 2 section:
+  - "Ngôn ngữ AI": 3 radio options — Auto / Tiếng Việt / English (kèm mô tả ngắn mỗi option)
+  - "Gemini API Key": inline content của `ApiKeySetupPage` (copy UI, không redirect)
+- [ ] Route `/settings` trong `main.jsx`
+- [ ] Sidebar: đổi link từ `/settings/api-key` → `/settings`
+- [ ] Mọi API call trong `services/` thêm header `X-Response-Language: vi|en` khi `lang !== 'auto'` (bỏ qua khi auto)
+- [ ] `npm run build` ✓
+
+### Backend Tasks
+- [ ] Header dependency `get_response_language` (optional, default `None`) — đọc `X-Response-Language`
+- [ ] Inject language directive vào user-turn prompt khi override được set:
+  - `vi` → append `"\nHãy trả lời bằng tiếng Việt."` vào cuối prompt
+  - `en` → append `"\nPlease respond in English."` vào cuối prompt
+- [ ] Áp dụng cho: `generate_summary` (map + reduce), `score_relevance` (explanation), `answer_question`, `answer_question_stream`
+- [ ] **Không** áp dụng cho: `extract_keywords`, `generate_knowledge_graph` (labels là ngôn ngữ tài liệu)
+- [ ] `pytest backend/` — số lượng passed không giảm
