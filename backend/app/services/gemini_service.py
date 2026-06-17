@@ -475,15 +475,23 @@ async def generate_knowledge_graph(text: str, api_key: str) -> dict:
     raise GeminiServiceError("Không thể tạo knowledge graph hợp lệ sau 3 lần thử.") from last_err
 
 
+def _qa_prompt(question: str, context: str) -> str:
+    return (
+        "Trả lời câu hỏi dựa CHỈ VÀO ngữ cảnh được cung cấp dưới đây.\n"
+        "Trả lời bằng cùng ngôn ngữ với câu hỏi.\n\n"
+        "Quy tắc bắt buộc:\n"
+        "- Nếu câu trả lời CÓ trong ngữ cảnh: trả lời trực tiếp và súc tích. Dùng **bold** để đánh dấu phần chứng cứ quan trọng.\n"
+        '- Nếu câu trả lời KHÔNG có trong ngữ cảnh: chỉ viết đúng cụm "Tài liệu không đề cập đến điều này." — không thêm suy đoán, không nói "có thể" hay "dựa trên logic suy ra".\n'
+        "- Độ dài: tối đa 3–4 đoạn ngắn; nếu câu trả lời đơn giản thì 1–2 câu là đủ.\n\n"
+        f"Ngữ cảnh:\n{context}\n\n"
+        f"Câu hỏi: {question}"
+    )
+
+
 async def answer_question(question: str, context_chunks: list[str], api_key: str) -> str:
     model = _make_client(api_key)
     context = "\n\n---\n\n".join(context_chunks)
-    prompt = (
-        f"Answer the question based ONLY on the provided context. "
-        f"If the answer is not in the context, say so.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question: {question}"
-    )
+    prompt = _qa_prompt(question, context)
     response = await _call_with_backoff(
         lambda: model.generate_content_async(prompt), what="trả lời câu hỏi", max_retries=2
     )
@@ -498,12 +506,7 @@ async def answer_question_stream(question: str, context_chunks: list[str], api_k
     into an SSE error frame. No retry: a stream cannot be resumed once started."""
     model = _make_client(api_key)
     context = "\n\n---\n\n".join(context_chunks)
-    prompt = (
-        f"Answer the question based ONLY on the provided context. "
-        f"If the answer is not in the context, say so.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question: {question}"
-    )
+    prompt = _qa_prompt(question, context)
     try:
         response = await model.generate_content_async(prompt, stream=True)
         async for chunk in response:
