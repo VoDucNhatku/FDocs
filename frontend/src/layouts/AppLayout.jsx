@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, NavLink, useParams } from 'react-router-dom'
-import { BookOpen, Upload, LogOut, Key, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { BookOpen, Upload, LogOut, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useGeminiKey } from '@/context/GeminiKeyContext'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
@@ -78,8 +78,8 @@ export function AppLayout() {
 
         <div className="p-2 border-t border-[var(--border)] flex flex-col gap-1 shrink-0">
           <NavLink
-            to="/settings/api-key"
-            title={collapsed ? (hasKey ? 'Gemini Key' : 'Chưa có Gemini Key') : undefined}
+            to="/settings"
+            title={collapsed ? (hasKey ? 'Cài đặt' : 'Cài đặt — chưa có Gemini Key') : undefined}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
@@ -92,8 +92,8 @@ export function AppLayout() {
               )
             }
           >
-            <Key size={16} />
-            {!collapsed && (hasKey ? 'Gemini Key' : 'Chưa có Gemini Key')}
+            <Settings size={16} />
+            {!collapsed && (hasKey ? 'Cài đặt' : 'Cài đặt — chưa có key')}
           </NavLink>
           <button
             onClick={logout}

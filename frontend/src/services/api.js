@@ -14,12 +14,20 @@ export function getAuthToken() {
   return _getToken?.() ?? null
 }
 
+export function getResponseLanguageHeader() {
+  const lang = localStorage.getItem('fdocs:lang') || 'auto'
+  return lang !== 'auto' ? { 'X-Response-Language': lang } : {}
+}
+
 api.interceptors.request.use((config) => {
   const token = _getToken?.()
   if (token) config.headers.Authorization = `Bearer ${token}`
 
   const geminiKey = localStorage.getItem('fdocs-gemini-key')
   if (geminiKey) config.headers['X-Gemini-Key'] = geminiKey
+
+  const lang = localStorage.getItem('fdocs:lang') || 'auto'
+  if (lang !== 'auto') config.headers['X-Response-Language'] = lang
 
   return config
 })

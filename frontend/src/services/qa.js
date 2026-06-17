@@ -1,4 +1,4 @@
-import api, { getAuthToken } from './api'
+import api, { getAuthToken, getResponseLanguageHeader } from './api'
 
 export const qaService = {
   ask: (docId, question) =>
@@ -21,6 +21,7 @@ export const qaService = {
         const headers = {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
+          ...getResponseLanguageHeader(),
         }
         if (token) headers['Authorization'] = `Bearer ${token}`
         if (geminiKey) headers['X-Gemini-Key'] = geminiKey
