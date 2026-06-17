@@ -313,9 +313,19 @@ async def generate_summary(text: str, api_key: str) -> str:
             len(segments), SUMMARY_MAX_SEGMENTS,
         )
         segments = segments[:SUMMARY_MAX_SEGMENTS]
+    def _map_prompt(segment: str) -> str:
+        return (
+            "Tóm tắt đoạn sau của tài liệu học thuật.\n\n"
+            "Yêu cầu:\n"
+            "- Dùng ### heading cho mỗi chủ đề hoặc luận điểm lớn\n"
+            "- Dùng - bullet list cho các điểm chính dưới mỗi heading\n"
+            "- Giữ nguyên thuật ngữ kỹ thuật và tên riêng từ tài liệu\n\n"
+            f"Nội dung:\n{segment}"
+        )
+
     if len(segments) == 1:
         response = await _call_with_backoff(
-            lambda: model.generate_content_async(f"Summarize the following text concisely:\n\n{segments[0]}"),
+            lambda: model.generate_content_async(_map_prompt(segments[0])),
             what="tóm tắt",
         )
         return _extract_text(response, "tóm tắt")
@@ -323,9 +333,7 @@ async def generate_summary(text: str, api_key: str) -> str:
     partial_summaries: list[str] = []
     for i, segment in enumerate(segments):
         response = await _call_with_backoff(
-            lambda segment=segment: model.generate_content_async(
-                f"Summarize the following text concisely:\n\n{segment}"
-            ),
+            lambda segment=segment: model.generate_content_async(_map_prompt(segment)),
             what="tóm tắt",
         )
         partial_summaries.append(_extract_text(response, "tóm tắt"))
@@ -333,10 +341,17 @@ async def generate_summary(text: str, api_key: str) -> str:
             await asyncio.sleep(SUMMARY_MAP_DELAY)
 
     combined = "\n\n".join(partial_summaries)
+    reduce_prompt = (
+        "Tổng hợp các tóm tắt riêng lẻ sau thành một bản tóm tắt duy nhất, mạch lạc.\n\n"
+        "Yêu cầu:\n"
+        "- Dùng ## heading cho các chủ đề lớn của toàn tài liệu\n"
+        "- Dùng - bullet list cho điểm chính dưới mỗi heading\n"
+        "- Loại bỏ nội dung trùng lặp giữa các phần\n"
+        "- Sắp xếp theo luồng logic của tài liệu, không phải theo thứ tự các tóm tắt đầu vào\n\n"
+        f"Các tóm tắt riêng lẻ:\n{combined}"
+    )
     final = await _call_with_backoff(
-        lambda: model.generate_content_async(
-            f"Synthesize these partial summaries into one coherent summary:\n\n{combined}"
-        ),
+        lambda: model.generate_content_async(reduce_prompt),
         what="tổng hợp tóm tắt",
     )
     return _extract_text(final, "tổng hợp tóm tắt")
@@ -347,8 +362,13 @@ async def extract_keywords(text: str, api_key: str) -> list[str]:
     truncated = text[:8000]
     response = await _call_with_backoff(
         lambda: model.generate_content_async(
-            f"Extract the 10-15 most important keywords and concepts from this text. "
-            f"Return ONLY a JSON array of strings, no explanation.\n\n{truncated}"
+            "Trích xuất 10–15 từ khóa và khái niệm quan trọng nhất từ đoạn văn này.\n\n"
+            "Tiêu chí ưu tiên (theo thứ tự):\n"
+            "1. Thuật ngữ kỹ thuật đặc thù của lĩnh vực học thuật\n"
+            "2. Tên phương pháp, mô hình, hoặc framework được đề cập\n"
+            "3. Khái niệm xuất hiện nhiều lần hoặc được định nghĩa rõ ràng\n\n"
+            'Trả về JSON array: ["từ khóa 1", "khái niệm 2", ...]\n\n'
+            f"Nội dung:\n{truncated}"
         ),
         what="trích xuất từ khoá",
     )
@@ -410,8 +430,17 @@ async def generate_knowledge_graph(text: str, api_key: str) -> dict:
     model = _make_json_client(api_key, KG_SCHEMA)
     truncated = text[:10000]
     prompt = (
-        f"Extract a knowledge graph from this text. "
-        f"Identify key concepts, entities, and processes, and their relationships.\n\n{truncated}"
+        "Trích xuất knowledge graph từ đoạn văn học thuật sau.\n\n"
+        "Quy tắc trích xuất Nodes (tối đa 20):\n"
+        "- Chọn những concept, entity, hoặc process QUAN TRỌNG NHẤT — ưu tiên chất lượng hơn số lượng\n"
+        '- type "concept": khái niệm lý thuyết, định nghĩa, nguyên lý\n'
+        '- type "entity": tên riêng, phương pháp, công cụ, tổ chức\n'
+        '- type "process": quy trình, thuật toán, chuỗi bước\n'
+        '- Loại bỏ node quá chung chung như "nghiên cứu", "tài liệu", "kết quả"\n\n'
+        "Quy tắc trích xuất Edges:\n"
+        '- Mỗi edge là động từ hoặc cụm động từ ngắn (tối đa 4 từ): "sử dụng", "dẫn đến", "bao gồm", "được định nghĩa bằng", "ảnh hưởng đến"\n'
+        '- Không dùng noun phrase làm edge label ("dependency of", "part of")\n\n'
+        f"Nội dung:\n{truncated}"
     )
     last_err: Exception | None = None
     for attempt in range(3):
