@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, NavLink, useParams } from 'react-router-dom'
-import { BookOpen, Upload, LogOut, Key, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { BookOpen, Upload, LogOut, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useGeminiKey } from '@/context/GeminiKeyContext'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
@@ -12,14 +12,12 @@ function loadCollapsed() {
 }
 
 export function AppLayout() {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, logout, isLoading } = useAuth()
   const { hasKey } = useGeminiKey()
   const [paletteAction, setPaletteAction] = useState(null)
   const [collapsed, setCollapsed] = useState(loadCollapsed)
   const [focusMode, setFocusMode] = useState(false)
   const { docId } = useParams()
-
-  if (!isAuthenticated) return <Navigate to="/login" replace />
 
   const toggleCollapsed = () =>
     setCollapsed((prev) => {
@@ -37,6 +35,9 @@ export function AppLayout() {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [])
+
+  if (isLoading) return null
+  if (!isAuthenticated) return <Navigate to="/login" replace />
 
   const sidebarHidden = focusMode
   const sidebarWidth = sidebarHidden ? 'w-0 overflow-hidden border-r-0' : collapsed ? 'w-14' : 'w-60'
@@ -78,8 +79,8 @@ export function AppLayout() {
 
         <div className="p-2 border-t border-[var(--border)] flex flex-col gap-1 shrink-0">
           <NavLink
-            to="/settings/api-key"
-            title={collapsed ? (hasKey ? 'Gemini Key' : 'Chưa có Gemini Key') : undefined}
+            to="/settings"
+            title={collapsed ? (hasKey ? 'Cài đặt' : 'Cài đặt — chưa có Gemini Key') : undefined}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
@@ -92,8 +93,8 @@ export function AppLayout() {
               )
             }
           >
-            <Key size={16} />
-            {!collapsed && (hasKey ? 'Gemini Key' : 'Chưa có Gemini Key')}
+            <Settings size={16} />
+            {!collapsed && (hasKey ? 'Cài đặt' : 'Cài đặt — chưa có key')}
           </NavLink>
           <button
             onClick={logout}

@@ -27,6 +27,37 @@ _QUOTA_MSG = (
     "Thử lại sau ít phút hoặc dùng tài liệu nhỏ hơn."
 )
 
+_SYSTEM_TEXT = """\
+Bạn là trợ lý học thuật của FDocs — ứng dụng giúp sinh viên đọc tài liệu học thuật.
+
+NGÔN NGỮ: Phát hiện ngôn ngữ chủ đạo từ nội dung tài liệu được cung cấp:
+- Tài liệu tiếng Việt → trả lời tiếng Việt
+- Tài liệu tiếng Anh → trả lời tiếng Anh
+- Tài liệu mixed → ưu tiên tiếng Việt
+(Nếu user-turn chỉ định ngôn ngữ khác → ưu tiên theo user-turn)
+
+GROUNDING: Chỉ sử dụng thông tin từ nội dung tài liệu được cung cấp trong prompt. Tổng hợp và suy luận từ nội dung được cung cấp là hợp lệ — đây vẫn là grounded. Không bổ sung từ kiến thức bên ngoài. Nếu chủ đề câu hỏi thực sự vắng mặt trong tài liệu → dùng đúng cụm "Tài liệu không đề cập đến điều này."
+
+ĐỊNH DẠNG: Dùng Markdown khi hữu ích:
+- ### heading cho chủ đề lớn (trong summary)
+- **bold** cho khái niệm quan trọng hoặc trích dẫn chứng cứ
+- - bullet list cho điểm liệt kê
+Không dùng Markdown cho câu trả lời ngắn (1–2 câu).
+Dùng LaTeX khi có ký hiệu toán học hoặc công thức: $...$ cho inline, $$...$$ cho display block. Frontend hỗ trợ KaTeX render.
+
+PHONG CÁCH: Học thuật, súc tích. Không mở đầu bằng: "Tất nhiên!", "Dưới đây là...", "Tôi rất vui được...", "Chắc chắn rồi!". Không kết thúc bằng: "Hy vọng hữu ích!", "Nếu bạn có câu hỏi...", "Tóm lại,".\
+"""
+
+_SYSTEM_JSON = """\
+Bạn là trợ lý học thuật của FDocs — ứng dụng giúp sinh viên đọc tài liệu học thuật.
+
+OUTPUT: Trả về ĐÚNG định dạng JSON như mô tả trong prompt. Không thêm text, markdown, code fence (```json), hay giải thích nào bên ngoài JSON. JSON minified (không có whitespace thừa).
+
+NGÔN NGỮ: Phát hiện ngôn ngữ chủ đạo từ nội dung tài liệu. Các trường text trong JSON (label, explanation, title, relation, tên phần) phải dùng ngôn ngữ đó. Ưu tiên tiếng Việt nếu mixed.
+
+GROUNDING: Chỉ sử dụng thông tin từ nội dung tài liệu được cung cấp. Không bổ sung từ kiến thức bên ngoài.\
+"""
+
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
 # text-embedding-004 was shut down by Google on 2026-01-14; gemini-embedding-001
@@ -101,15 +132,16 @@ KG_SCHEMA = {
 }
 
 
-def _make_client(api_key: str) -> genai.GenerativeModel:
+def _make_client(api_key: str, system_instruction: str = _SYSTEM_TEXT) -> genai.GenerativeModel:
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel(GENERATION_MODEL)
+    return genai.GenerativeModel(GENERATION_MODEL, system_instruction=system_instruction)
 
 
-def _make_json_client(api_key: str, schema: dict) -> genai.GenerativeModel:
+def _make_json_client(api_key: str, schema: dict, system_instruction: str = _SYSTEM_JSON) -> genai.GenerativeModel:
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(
         GENERATION_MODEL,
+        system_instruction=system_instruction,
         generation_config=genai.GenerationConfig(
             response_mime_type="application/json",
             response_schema=schema,
@@ -271,7 +303,15 @@ def _split_for_summary(text: str) -> list[str]:
     return splitter.split_text(text)
 
 
-async def generate_summary(text: str, api_key: str) -> str:
+def _lang_directive(lang: str | None) -> str:
+    if lang == "vi":
+        return "\nHãy trả lời bằng tiếng Việt."
+    if lang == "en":
+        return "\nPlease respond in English."
+    return ""
+
+
+async def generate_summary(text: str, api_key: str, lang: str | None = None) -> str:
     model = _make_client(api_key)
     segments = _split_for_summary(text)
     if not segments:
@@ -282,9 +322,21 @@ async def generate_summary(text: str, api_key: str) -> str:
             len(segments), SUMMARY_MAX_SEGMENTS,
         )
         segments = segments[:SUMMARY_MAX_SEGMENTS]
+
+    def _map_prompt(segment: str) -> str:
+        return (
+            "Tóm tắt đoạn sau của tài liệu học thuật.\n\n"
+            "Yêu cầu:\n"
+            "- Dùng ### heading cho mỗi chủ đề hoặc luận điểm lớn\n"
+            "- Dùng - bullet list cho các điểm chính dưới mỗi heading\n"
+            "- Giữ nguyên thuật ngữ kỹ thuật và tên riêng từ tài liệu\n\n"
+            f"Nội dung:\n{segment}"
+            + _lang_directive(lang)
+        )
+
     if len(segments) == 1:
         response = await _call_with_backoff(
-            lambda: model.generate_content_async(f"Summarize the following text concisely:\n\n{segments[0]}"),
+            lambda: model.generate_content_async(_map_prompt(segments[0])),
             what="tóm tắt",
         )
         return _extract_text(response, "tóm tắt")
@@ -292,9 +344,7 @@ async def generate_summary(text: str, api_key: str) -> str:
     partial_summaries: list[str] = []
     for i, segment in enumerate(segments):
         response = await _call_with_backoff(
-            lambda segment=segment: model.generate_content_async(
-                f"Summarize the following text concisely:\n\n{segment}"
-            ),
+            lambda segment=segment: model.generate_content_async(_map_prompt(segment)),
             what="tóm tắt",
         )
         partial_summaries.append(_extract_text(response, "tóm tắt"))
@@ -302,22 +352,35 @@ async def generate_summary(text: str, api_key: str) -> str:
             await asyncio.sleep(SUMMARY_MAP_DELAY)
 
     combined = "\n\n".join(partial_summaries)
+    reduce_prompt = (
+        "Tổng hợp các tóm tắt riêng lẻ sau thành một bản tóm tắt duy nhất, mạch lạc.\n\n"
+        "Yêu cầu:\n"
+        "- Dùng ## heading cho các chủ đề lớn của toàn tài liệu\n"
+        "- Dùng - bullet list cho điểm chính dưới mỗi heading\n"
+        "- Loại bỏ nội dung trùng lặp giữa các phần\n"
+        "- Sắp xếp theo luồng logic của tài liệu, không phải theo thứ tự các tóm tắt đầu vào\n\n"
+        f"Các tóm tắt riêng lẻ:\n{combined}"
+        + _lang_directive(lang)
+    )
     final = await _call_with_backoff(
-        lambda: model.generate_content_async(
-            f"Synthesize these partial summaries into one coherent summary:\n\n{combined}"
-        ),
+        lambda: model.generate_content_async(reduce_prompt),
         what="tổng hợp tóm tắt",
     )
     return _extract_text(final, "tổng hợp tóm tắt")
 
 
 async def extract_keywords(text: str, api_key: str) -> list[str]:
-    model = _make_client(api_key)
+    model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     truncated = text[:8000]
     response = await _call_with_backoff(
         lambda: model.generate_content_async(
-            f"Extract the 10-15 most important keywords and concepts from this text. "
-            f"Return ONLY a JSON array of strings, no explanation.\n\n{truncated}"
+            "Trích xuất 10–15 từ khóa và khái niệm quan trọng nhất từ đoạn văn này.\n\n"
+            "Tiêu chí ưu tiên (theo thứ tự):\n"
+            "1. Thuật ngữ kỹ thuật đặc thù của lĩnh vực học thuật\n"
+            "2. Tên phương pháp, mô hình, hoặc framework được đề cập\n"
+            "3. Khái niệm xuất hiện nhiều lần hoặc được định nghĩa rõ ràng\n\n"
+            'Trả về JSON array: ["từ khóa 1", "khái niệm 2", ...]\n\n'
+            f"Nội dung:\n{truncated}"
         ),
         what="trích xuất từ khoá",
     )
@@ -328,16 +391,28 @@ async def extract_keywords(text: str, api_key: str) -> list[str]:
     return data
 
 
-async def score_relevance(text: str, goal: str, keywords: list[str], topic: str, api_key: str) -> dict:
-    model = _make_client(api_key)
+async def score_relevance(text: str, goal: str, keywords: list[str], topic: str, api_key: str, lang: str | None = None) -> dict:
+    model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     truncated = text[:6000]
+    keywords_joined = ", ".join(keywords)
     prompt = (
-        f"Evaluate how relevant this document is to the user's need.\n"
-        f"User goal: {goal}\n"
-        f"Keywords of interest: {', '.join(keywords)}\n"
-        f"Topic: {topic}\n\n"
-        f"Document excerpt:\n{truncated}\n\n"
-        f"Return ONLY a JSON object: {{\"score\": <float 0-1>, \"explanation\": \"<1-2 sentences>\"}}"
+        "Đánh giá mức độ phù hợp của tài liệu với nhu cầu của người dùng.\n\n"
+        "Nhu cầu người dùng:\n"
+        f"- Mục tiêu học tập: {goal}\n"
+        f"- Từ khóa quan tâm: {keywords_joined}\n"
+        f"- Chủ đề: {topic}\n\n"
+        f"Trích đoạn tài liệu:\n{truncated}\n\n"
+        "Thang điểm:\n"
+        "- 0.85–1.0: Trực tiếp phục vụ mục tiêu, bao phủ phần lớn từ khóa\n"
+        "- 0.60–0.84: Liên quan đáng kể, có nội dung hữu ích rõ ràng\n"
+        "- 0.35–0.59: Liên quan gián tiếp, chỉ chạm một phần nhu cầu\n"
+        "- 0.10–0.34: Ít liên quan, thông tin ngoài lề\n"
+        "- 0.00–0.09: Không phù hợp\n\n"
+        'Trả về JSON: {"score": <float 0.0–1.0, 2 chữ số thập phân>, '
+        '"explanation": "<2–3 câu: (1) điểm số được cho vì lý do gì, '
+        "(2) điểm mạnh của tài liệu với nhu cầu này, "
+        '(3) điểm còn thiếu nếu có. Dùng **bold** cho lý do chính.>"}'
+        + _lang_directive(lang)
     )
     response = await _call_with_backoff(
         lambda: model.generate_content_async(prompt), what="đánh giá độ liên quan"
@@ -353,7 +428,7 @@ async def score_relevance(text: str, goal: str, keywords: list[str], topic: str,
 
 
 async def generate_time_plan(sections: list | None, word_count: int, start_date: str, deadline: str, hours_per_day: float, api_key: str) -> list:
-    model = _make_client(api_key)
+    model = _make_client(api_key, system_instruction=_SYSTEM_JSON)
     sections_info = json.dumps(sections) if sections else "No section structure detected; divide by word count."
     prompt = (
         f"Create a reading plan for a document.\n"
@@ -379,8 +454,17 @@ async def generate_knowledge_graph(text: str, api_key: str) -> dict:
     model = _make_json_client(api_key, KG_SCHEMA)
     truncated = text[:10000]
     prompt = (
-        f"Extract a knowledge graph from this text. "
-        f"Identify key concepts, entities, and processes, and their relationships.\n\n{truncated}"
+        "Trích xuất knowledge graph từ đoạn văn học thuật sau.\n\n"
+        "Quy tắc trích xuất Nodes (tối đa 20):\n"
+        "- Chọn những concept, entity, hoặc process QUAN TRỌNG NHẤT — ưu tiên chất lượng hơn số lượng\n"
+        '- type "concept": khái niệm lý thuyết, định nghĩa, nguyên lý\n'
+        '- type "entity": tên riêng, phương pháp, công cụ, tổ chức\n'
+        '- type "process": quy trình, thuật toán, chuỗi bước\n'
+        '- Loại bỏ node quá chung chung như "nghiên cứu", "tài liệu", "kết quả"\n\n'
+        "Quy tắc trích xuất Edges:\n"
+        '- Mỗi edge là động từ hoặc cụm động từ ngắn (tối đa 4 từ): "sử dụng", "dẫn đến", "bao gồm", "được định nghĩa bằng", "ảnh hưởng đến"\n'
+        '- Không dùng noun phrase làm edge label ("dependency of", "part of")\n\n'
+        f"Nội dung:\n{truncated}"
     )
     last_err: Exception | None = None
     for attempt in range(3):
@@ -404,22 +488,32 @@ async def generate_knowledge_graph(text: str, api_key: str) -> dict:
     raise GeminiServiceError("Không thể tạo knowledge graph hợp lệ sau 3 lần thử.") from last_err
 
 
-async def answer_question(question: str, context_chunks: list[str], api_key: str) -> str:
+def _qa_prompt(question: str, context: str, lang: str | None = None) -> str:
+    return (
+        "Trả lời câu hỏi dựa CHỈ VÀO ngữ cảnh được cung cấp dưới đây.\n"
+        "Trả lời bằng cùng ngôn ngữ với câu hỏi.\n\n"
+        "Quy tắc bắt buộc:\n"
+        "- Nếu câu trả lời có thể rút ra từ ngữ cảnh (trực tiếp hoặc bằng cách tổng hợp): trả lời trực tiếp và súc tích. Dùng **bold** để đánh dấu phần chứng cứ quan trọng.\n"
+        "- Câu hỏi tổng quan ('nói về gì?', 'chủ đề là gì?', 'tóm tắt nội dung?'): tổng hợp từ các đoạn ngữ cảnh — đây là grounding hợp lệ, không phải suy đoán ngoài tài liệu.\n"
+        '- Nếu chủ đề câu hỏi THỰC SỰ VẮNG MẶT trong toàn bộ ngữ cảnh (không đề cập bất kỳ đâu): chỉ viết đúng cụm "Tài liệu không đề cập đến điều này." — không thêm suy đoán từ kiến thức bên ngoài.\n'
+        "- Độ dài: tối đa 3–4 đoạn ngắn; nếu câu trả lời đơn giản thì 1–2 câu là đủ.\n\n"
+        f"Ngữ cảnh:\n{context}\n\n"
+        f"Câu hỏi: {question}"
+        + _lang_directive(lang)
+    )
+
+
+async def answer_question(question: str, context_chunks: list[str], api_key: str, lang: str | None = None) -> str:
     model = _make_client(api_key)
     context = "\n\n---\n\n".join(context_chunks)
-    prompt = (
-        f"Answer the question based ONLY on the provided context. "
-        f"If the answer is not in the context, say so.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question: {question}"
-    )
+    prompt = _qa_prompt(question, context, lang)
     response = await _call_with_backoff(
         lambda: model.generate_content_async(prompt), what="trả lời câu hỏi", max_retries=2
     )
     return _extract_text(response, "trả lời câu hỏi")
 
 
-async def answer_question_stream(question: str, context_chunks: list[str], api_key: str):
+async def answer_question_stream(question: str, context_chunks: list[str], api_key: str, lang: str | None = None):
     """Async generator that yields text tokens as they arrive from Gemini.
 
     Quota/errors mid-stream cannot change the (already-committed) HTTP status, so
@@ -427,12 +521,7 @@ async def answer_question_stream(question: str, context_chunks: list[str], api_k
     into an SSE error frame. No retry: a stream cannot be resumed once started."""
     model = _make_client(api_key)
     context = "\n\n---\n\n".join(context_chunks)
-    prompt = (
-        f"Answer the question based ONLY on the provided context. "
-        f"If the answer is not in the context, say so.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question: {question}"
-    )
+    prompt = _qa_prompt(question, context, lang)
     try:
         response = await model.generate_content_async(prompt, stream=True)
         async for chunk in response:

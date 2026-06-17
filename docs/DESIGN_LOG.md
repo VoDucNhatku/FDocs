@@ -1,6 +1,6 @@
 # FDocs — Design Log
 
-> Cập nhật: 2026-06-16 (Designer Worker pass 2 — full spec)
+> Cập nhật: 2026-06-17 (Designer Worker pass 3 — KG Enhanced Interactivity spec)
 
 ---
 
@@ -18,6 +18,11 @@
 | 8 | Mode switching | Read / Understand = two tabs in same DocumentPage (NOT separate routes) |
 | 9 | Focus mode | Collapse sidebar + text panel → centered 680px reading area (shortcut: `F`) |
 | 10 | Mobile model | Single-column, bottom tab bar, Knowledge Graph disabled |
+| 11 | KG Tooltip position | DOM-based (absolute trong canvas wrapper), không dùng Cytoscape label |
+| 12 | KG Click deselect | Click lần 2 vào cùng node để deselect (không dùng Escape — conflict với Focus mode) |
+| 13 | KG Legend position | bottom-right của canvas container (offset: 12px) |
+| 14 | KG Table fallback tabs | 2 tabs riêng (Nodes / Edges) — không phải 1 table dài |
+| 15 | KG Edge opacity mặc định | 0.7 để giảm visual noise; highlighted edges dùng opacity 1 |
 
 ---
 
@@ -437,6 +442,16 @@ Algorithm: all-pairs cosine similarity giữa document centroid embeddings (đã
 - [ ] **Focus mode** — button `[⬚]` trong header, phím `F` shortcut; sidebar + text panel collapse; Tools floating button
 - [ ] **`prefers-reduced-motion`** wrapper trong `index.css`
 - [ ] **Semantic color tokens** — dùng `var(--success)` / `var(--error)` trong error states, badges, upload feedback
+
+### Implement sau — KG Enhanced Interactivity (P1 — Design COMPLETE)
+
+> Spec đầy đủ tại: `docs/KG_DESIGN_SPEC.md`
+
+- [ ] **KG Edge label improvement** — font-size 10px + text-background-color pill + opacity 0.7
+- [ ] **KG Legend** — DOM element absolute bottom-right, 3 rows (concept/entity/process), `hidden sm:flex`
+- [ ] **KG Hover tooltip** — DOM-based, 120ms delay, flip logic ở rìa canvas, fade-in animation
+- [ ] **KG Click highlight** — Cytoscape class system: `selected` / `highlighted` / `dimmed`; double-click zoom ego network; click empty space reset
+- [ ] **KG Accessibility Table** — toggle button `[Table view]` trong header; component `KGTable.jsx`; 2 tabs (Nodes/Edges); sticky header; proper ARIA
 
 ### Implement sau (P1 — Design Pending đã resolve)
 

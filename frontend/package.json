@@ -18,12 +18,17 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "cytoscape": "^3.34.0",
+    "katex": "^0.17.0",
     "lucide-react": "^1.18.0",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^6.0.227",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.30.4",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {

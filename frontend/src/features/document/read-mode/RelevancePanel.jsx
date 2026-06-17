@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { MarkdownLatex } from '@/components/ui/MarkdownLatex'
 import { analysisService } from '@/services/analysis'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -76,7 +77,9 @@ export function RelevancePanel({ docId, cached, input: cachedInput, onUpdate }) 
             />
           </div>
           {result.explanation && (
-            <p className="text-sm text-[var(--text-muted)]">{result.explanation}</p>
+            <div className="prose-reading text-sm text-[var(--text-muted)]">
+              <MarkdownLatex>{result.explanation}</MarkdownLatex>
+            </div>
           )}
         </div>
       )}

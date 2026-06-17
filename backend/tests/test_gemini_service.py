@@ -200,20 +200,20 @@ class TestChunkText:
 class TestExtractKeywords:
     async def test_parses_plain_json_array(self, monkeypatch):
         monkeypatch.setattr(
-            gemini_service, "_make_client", lambda key: _FakeModel('["algebra", "vector", "matrix"]')
+            gemini_service, "_make_client", lambda key, **kw: _FakeModel('["algebra", "vector", "matrix"]')
         )
         result = await gemini_service.extract_keywords("doc text", "key")
         assert result == ["algebra", "vector", "matrix"]
 
     async def test_strips_json_code_fence(self, monkeypatch):
         fenced = '```json\n["algebra", "vector"]\n```'
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel(fenced))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel(fenced))
         result = await gemini_service.extract_keywords("doc text", "key")
         assert result == ["algebra", "vector"]
 
     async def test_strips_bare_code_fence(self, monkeypatch):
         fenced = '```\n["a", "b"]\n```'
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel(fenced))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel(fenced))
         result = await gemini_service.extract_keywords("doc text", "key")
         assert result == ["a", "b"]
 
@@ -221,14 +221,14 @@ class TestExtractKeywords:
 class TestScoreRelevance:
     async def test_parses_and_rounds_score(self, monkeypatch):
         payload = '{"score": 0.82345, "explanation": "Phù hợp cao."}'
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel(payload))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel(payload))
         result = await gemini_service.score_relevance("text", "goal", ["k1"], "topic", "key")
         assert result["relevance_score"] == 0.823
         assert result["explanation"] == "Phù hợp cao."
 
     async def test_handles_fenced_json(self, monkeypatch):
         payload = '```json\n{"score": 0.5, "explanation": "Trung bình."}\n```'
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel(payload))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel(payload))
         result = await gemini_service.score_relevance("text", "goal", [], "topic", "key")
         assert result["relevance_score"] == 0.5
 
@@ -250,7 +250,7 @@ class TestAnswerQuestionStream:
             async def generate_content_async(self, prompt, stream=False):
                 return _StreamResp()
 
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _StreamModel())
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _StreamModel())
         tokens = [t async for t in gemini_service.answer_question_stream("q", ["ctx"], "key")]
         assert tokens == ["Hello", " world"]
 
@@ -349,7 +349,7 @@ class TestGenerateSummary:
                 calls["n"] += 1
                 return _FakeResponse("tóm tắt ngắn")
 
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _M())
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _M())
         out = await gemini_service.generate_summary("Một đoạn ngắn.", "key")
         assert out == "tóm tắt ngắn"
         assert calls["n"] == 1
@@ -366,7 +366,7 @@ class TestGenerateSummary:
                 calls["n"] += 1
                 return _FakeResponse("partial")
 
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _M())
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _M())
         text = "Linear algebra studies vector spaces and matrices. " * 1100  # ~56k chars
         out = await gemini_service.generate_summary(text, "key")
         assert isinstance(out, str)
@@ -383,7 +383,7 @@ class TestGenerateKnowledgeGraph:
             async def generate_content_async(self, prompt, **kw):
                 raise Exception("429 quota exceeded")
 
-        monkeypatch.setattr(gemini_service, "_make_json_client", lambda key, schema: _M())
+        monkeypatch.setattr(gemini_service, "_make_json_client", lambda key, schema, **kw: _M())
         with pytest.raises(gemini_service.GeminiQuotaError):
             await gemini_service.generate_knowledge_graph("text", "key")
 
@@ -394,7 +394,7 @@ class TestGenerateKnowledgeGraph:
             async def generate_content_async(self, prompt, **kw):
                 return _FakeResponse(payload)
 
-        monkeypatch.setattr(gemini_service, "_make_json_client", lambda key, schema: _M())
+        monkeypatch.setattr(gemini_service, "_make_json_client", lambda key, schema, **kw: _M())
         out = await gemini_service.generate_knowledge_graph("text", "key")
         assert out["nodes"][0]["id"] == "1"
         assert out["edges"] == []
@@ -404,29 +404,29 @@ class TestGenerateKnowledgeGraph:
             async def generate_content_async(self, prompt, **kw):
                 return _FakeResponse("not json at all")
 
-        monkeypatch.setattr(gemini_service, "_make_json_client", lambda key, schema: _M())
+        monkeypatch.setattr(gemini_service, "_make_json_client", lambda key, schema, **kw: _M())
         with pytest.raises(gemini_service.GeminiServiceError):
             await gemini_service.generate_knowledge_graph("text", "key")
 
 
 class TestJsonOutputValidation:
     async def test_keywords_non_json_raises_service_error(self, monkeypatch):
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel("xin lỗi tôi không thể"))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel("xin lỗi tôi không thể"))
         with pytest.raises(gemini_service.GeminiServiceError):
             await gemini_service.extract_keywords("text", "key")
 
     async def test_keywords_non_list_raises_service_error(self, monkeypatch):
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel('{"not": "a list"}'))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel('{"not": "a list"}'))
         with pytest.raises(gemini_service.GeminiServiceError):
             await gemini_service.extract_keywords("text", "key")
 
     async def test_relevance_missing_key_raises_service_error(self, monkeypatch):
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel('{"explanation": "x"}'))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel('{"explanation": "x"}'))
         with pytest.raises(gemini_service.GeminiServiceError):
             await gemini_service.score_relevance("t", "g", [], "topic", "key")
 
     async def test_time_plan_non_list_raises_service_error(self, monkeypatch):
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _FakeModel('{"oops": true}'))
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _FakeModel('{"oops": true}'))
         with pytest.raises(gemini_service.GeminiServiceError):
             await gemini_service.generate_time_plan(None, 100, "2026-06-16", "2026-06-20", 2.0, "key")
 
@@ -478,7 +478,7 @@ class TestSummarySegmentCap:
                 calls["n"] += 1
                 return _FakeResponse("partial")
 
-        monkeypatch.setattr(gemini_service, "_make_client", lambda key: _M())
+        monkeypatch.setattr(gemini_service, "_make_client", lambda key, **kw: _M())
         text = "word " * 120000  # ~600k chars → ~50 segments uncapped
         out = await gemini_service.generate_summary(text, "key")
         assert isinstance(out, str)
