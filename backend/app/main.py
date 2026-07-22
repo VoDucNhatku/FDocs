@@ -61,3 +61,25 @@ app.include_router(upload.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/init-db-debug")
+async def init_db_debug():
+    schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations", "0001_initial_schema.sql")
+    with open(schema_path, "r", encoding="utf-8") as f:
+        sql_script = f.read()
+    
+    statements = sql_script.split(";")
+    results = []
+    
+    async with engine.begin() as conn:
+        for stmt in statements:
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            try:
+                await conn.execute(text(stmt))
+                results.append({"status": "ok", "stmt": stmt[:50]})
+            except Exception as e:
+                results.append({"status": "error", "stmt": stmt[:50], "error": str(e)})
+    
+    return {"results": results}
