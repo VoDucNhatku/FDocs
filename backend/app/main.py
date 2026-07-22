@@ -18,22 +18,32 @@ from app.services.gemini_service import GeminiQuotaError, GeminiServiceError
 logging.basicConfig(level=logging.INFO)
 from contextlib import asynccontextmanager
 import os
-from app.database import engine
+import asyncpg
+
+async def _run_schema():
+    """Run the migration SQL using a direct asyncpg connection."""
+    schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations", "0001_initial_schema.sql")
+    if not os.path.exists(schema_path):
+        logging.warning(f"Schema file not found: {schema_path}")
+        return "schema file not found"
+    with open(schema_path, "r", encoding="utf-8") as f:
+        sql_script = f.read()
+    # Build a plain asyncpg DSN from the SQLAlchemy DATABASE_URL
+    dsn = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(dsn)
+    try:
+        await conn.execute(sql_script)
+        logging.info("Database initialized successfully.")
+        return "ok"
+    except Exception as e:
+        logging.warning(f"Database initialization info: {e}")
+        return str(e)
+    finally:
+        await conn.close()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations", "0001_initial_schema.sql")
-    if os.path.exists(schema_path):
-        with open(schema_path, "r", encoding="utf-8") as f:
-            sql_script = f.read()
-        async with engine.connect() as conn:
-            raw = await conn.get_raw_connection()
-            raw_conn = raw.dbapi_connection
-            try:
-                await raw_conn.execute(sql_script)
-                logging.info("Database initialized successfully.")
-            except Exception as e:
-                logging.warning(f"Database initialization info: {e}")
+    await _run_schema()
     yield
 
 app = FastAPI(title="FDocs API", version="1.0.0", lifespan=lifespan)
@@ -65,15 +75,9 @@ async def health():
 
 @app.get("/init-db-debug")
 async def init_db_debug():
-    schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations", "0001_initial_schema.sql")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        sql_script = f.read()
-
     try:
-        async with engine.connect() as conn:
-            raw = await conn.get_raw_connection()
-            raw_conn = raw.dbapi_connection
-            await raw_conn.execute(sql_script)
-        return {"status": "ok", "message": "All tables created successfully"}
+        result = await _run_schema()
+        return {"status": "ok" if result == "ok" else "error", "detail": result}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
