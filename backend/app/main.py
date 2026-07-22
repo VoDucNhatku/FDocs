@@ -16,8 +16,26 @@ from app.routes import auth, documents, analysis, qa, library, upload
 from app.services.gemini_service import GeminiQuotaError, GeminiServiceError
 
 logging.basicConfig(level=logging.INFO)
+from contextlib import asynccontextmanager
+import os
+from sqlalchemy import text
+from app.database import engine
 
-app = FastAPI(title="FDocs API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations", "0001_initial_schema.sql")
+    if os.path.exists(schema_path):
+        with open(schema_path, "r", encoding="utf-8") as f:
+            sql_script = f.read()
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(sql_script))
+                logging.info("Database initialized successfully.")
+            except Exception as e:
+                logging.warning(f"Database initialization info: {e}")
+    yield
+
+app = FastAPI(title="FDocs API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

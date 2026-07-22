@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "vector";     -- pgvector
 -- Tables
 -- ============================================================
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     email                   VARCHAR(255) NOT NULL UNIQUE,
     hashed_password         VARCHAR(255) NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE users (
     updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE documents (
+CREATE TABLE IF NOT EXISTS documents (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title           VARCHAR(500) NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE documents (
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE chunks (
+CREATE TABLE IF NOT EXISTS chunks (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id     UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     content         TEXT        NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE chunks (
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE analysis_results (
+CREATE TABLE IF NOT EXISTS analysis_results (
     id                  UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id         UUID            NOT NULL UNIQUE REFERENCES documents(id) ON DELETE CASCADE,
     summary             TEXT,
@@ -59,7 +59,7 @@ CREATE TABLE analysis_results (
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE qa_history (
+CREATE TABLE IF NOT EXISTS qa_history (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id     UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     question        TEXT        NOT NULL,
@@ -72,20 +72,20 @@ CREATE TABLE qa_history (
 -- Indexes
 -- ============================================================
 
-CREATE INDEX idx_documents_user_id
+CREATE INDEX IF NOT EXISTS idx_documents_user_id
     ON documents (user_id);
 
-CREATE INDEX idx_chunks_document_id
+CREATE INDEX IF NOT EXISTS idx_chunks_document_id
     ON chunks (document_id);
 
 -- HNSW index cho vector similarity search (cosine)
 -- m=16: connections per node (default, phù hợp cho dataset vừa)
 -- ef_construction=64: build-time accuracy vs speed tradeoff
-CREATE INDEX idx_chunks_embedding_hnsw
+CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw
     ON chunks USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
-CREATE INDEX idx_qa_history_document_id
+CREATE INDEX IF NOT EXISTS idx_qa_history_document_id
     ON qa_history (document_id);
 
 -- ============================================================
@@ -100,14 +100,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_documents_updated_at ON documents;
 CREATE TRIGGER trg_documents_updated_at
     BEFORE UPDATE ON documents
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_analysis_results_updated_at ON analysis_results;
 CREATE TRIGGER trg_analysis_results_updated_at
     BEFORE UPDATE ON analysis_results
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
