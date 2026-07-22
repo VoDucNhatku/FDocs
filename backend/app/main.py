@@ -18,7 +18,6 @@ from app.services.gemini_service import GeminiQuotaError, GeminiServiceError
 logging.basicConfig(level=logging.INFO)
 from contextlib import asynccontextmanager
 import os
-from sqlalchemy import text
 from app.database import engine
 
 @asynccontextmanager
@@ -27,9 +26,11 @@ async def lifespan(app: FastAPI):
     if os.path.exists(schema_path):
         with open(schema_path, "r", encoding="utf-8") as f:
             sql_script = f.read()
-        async with engine.begin() as conn:
+        async with engine.connect() as conn:
+            raw = await conn.get_raw_connection()
+            raw_conn = raw.dbapi_connection
             try:
-                await conn.execute(text(sql_script))
+                await raw_conn.execute(sql_script)
                 logging.info("Database initialized successfully.")
             except Exception as e:
                 logging.warning(f"Database initialization info: {e}")
@@ -67,19 +68,12 @@ async def init_db_debug():
     schema_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations", "0001_initial_schema.sql")
     with open(schema_path, "r", encoding="utf-8") as f:
         sql_script = f.read()
-    
-    statements = sql_script.split(";")
-    results = []
-    
-    async with engine.begin() as conn:
-        for stmt in statements:
-            stmt = stmt.strip()
-            if not stmt:
-                continue
-            try:
-                await conn.execute(text(stmt))
-                results.append({"status": "ok", "stmt": stmt[:50]})
-            except Exception as e:
-                results.append({"status": "error", "stmt": stmt[:50], "error": str(e)})
-    
-    return {"results": results}
+
+    try:
+        async with engine.connect() as conn:
+            raw = await conn.get_raw_connection()
+            raw_conn = raw.dbapi_connection
+            await raw_conn.execute(sql_script)
+        return {"status": "ok", "message": "All tables created successfully"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
